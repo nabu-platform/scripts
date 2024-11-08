@@ -1,0 +1,33 @@
+## Installs the applications locally
+[] project ?= null
+force ?= false
+inject(nabu.settings())
+
+applications = series("integrator", "developer", "cli")
+
+for (application : applications)
+	if (project == null || position(application, project) >= 0)
+		applicationPath = nabuApplications + "/" + application
+		if (force || file.exists(nabuWorkspace + "/packaging-" + application))
+			fresh = false
+			if (!file.exists(applicationPath))
+				system.mkdir("-p", applicationPath)
+				fresh = true
+			system.cd(nabuWorkspace + "/packaging-" + application)
+			system.mvn("clean", "package")
+			zip = first(file.list("target", fileRegex: ".*\.zip"))
+			if (zip == null)
+				echo("Build failed")
+			else
+				if (fresh)
+					echo("Installing " + application)
+				else
+					echo("Updating " + application)
+				system.cp("target/" + zip, applicationPath + "/release.zip")
+				system.cd(applicationPath)
+				# remove the library folder which is the primary updates of interest
+				system.rm("-rf", "lib")
+				# unzip without overwriting existing files
+				system.unzip("-n", "release.zip")
+	else
+		echo("Skipping " + project)
