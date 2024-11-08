@@ -1,17 +1,21 @@
+type ?= null
+
 inject(nabu.settings())
 
-system.cd(nabuWorkspace)
-for (file : file.list(directoryRegex: ".*", fileRegex: null, recursive: false))
-	path = nabuWorkspace + "/" + file
-	system.cd(path)
-	if (file.exists(".git"))
+if (type == null || type == "java")
+	system.cd(nabuWorkspace)
+	for (file : file.list(directoryRegex: ".*", fileRegex: null, recursive: false))
+		path = nabuWorkspace + "/" + file
+		system.cd(path)
+		if (file.exists(".git"))
+			echo("Pulling " + file)
+			system.git("pull")
+
+if (type == null || type == "repository")
+	system.cd(nabuRepository)
+	for (file : file.list(directoryRegex: ".git", recursive: true))
+		file = replace("/.git$", "", file)
+		path = nabuRepository + "/" + file
+		system.cd(path)
 		echo("Pulling " + file)
 		system.git("pull")
-
-system.cd(nabuRepository)
-for (file : file.list(directoryRegex: ".git", recursive: true))
-	file = replace("/.git$", "", file)
-	path = nabuRepository + "/" + file
-	system.cd(path)
-	echo("Pulling " + file)
-	system.git("pull")
