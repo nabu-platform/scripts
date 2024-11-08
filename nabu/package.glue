@@ -2,10 +2,7 @@
 [] project ?= null
 type ?= null
 force ?= false
-homeFolder = java.lang.System.getProperty("user.home")
-nabuWorkspace ?= homeFolder + "/nabu/workspaces/core"
-nabuRepository ?= homeFolder + "/nabu/repositories/repository"
-nabuBuilds ?= homeFolder + "/nabu/builds"
+inject(nabu.settings())
 
 if (type == "repository" || type == null)
 	# make sure we have the latest pom installed for module management
@@ -23,7 +20,7 @@ if (type == "repository" || type == null)
 	counter = 1
 	for (file : file.list(directoryRegex: ".git", fileRegex: null, recursive: true))
 		file = replace("/.git$", "", file)
-		if (project == null || position(file, project) >= 0)
+		if (project == null || position(file, project) >= 0 || position(replace("/", "-", file), project) >= 0)
 			path = nabuRepository + "/" + file
 			# if it is a git repository, check it
 			if (file.exists(path + "/.git") && file.exists(path + "/pom.xml"))
@@ -66,48 +63,49 @@ if (type == "java" || type == null)
 	for (file : file.list(directoryRegex: "packaging-.*"))
 		path = nabuWorkspace + "/" + file
 		name = replace("packaging-", "", file)
-		system.cd(path)
-		latest = nabuBuilds + "/applications/" + name + "/latest.zip"
-		# check if we have changed anything
-		# if there is no latest build yet, we definitely need a new one
-		changes = series()
-		changed = !file.exists(latest)
-		if (!changed)
-			dependencies = split("\n", system.mvn("dependency:tree"))
-			dependencies = filter(lambda(x, x ~ ".*be\.nabu\..*"), dependencies)
-			dependencies = replace(".*be\.nabu\..*?:([^:]+).*", "$1", dependencies)
-			# filter out any remainders like "-----" 
-			dependencies = filter(lambda(x, x ~ "[\w]+[\w-]*"), dependencies)
-			changed = false
-			# for each dependency, we check if the target jar has changed since the last modified of the latest build
-			since = file.modified(latest)
-			for (dependency : dependencies)
-				jarFile = first(file.list(nabuWorkspace + "/" + dependency + "/target", fileRegex: ".*\.jar"))
-				changedJar = jarFile == null || file.modified(nabuWorkspace + "/" + dependency + "/target/" + jarFile) > since
-				if (changedJar)
-					changed = true
-					changes = resolve(merge(changes, dependency))
-		if (changed)
-			result = system.mvn("clean", "package", "-Duser.timezone=UTC")
-			jar = first(file.list("target", fileRegex: ".*\.jar"))
-			zip = first(file.list("target", fileRegex: ".*\.zip"))
-			if (zip == null)
-				echo("Build failed for application " + name)
+		if (project == null || position(name, project) >= 0)
+			system.cd(path)
+			latest = nabuBuilds + "/applications/" + name + "/latest.zip"
+			# check if we have changed anything
+			# if there is no latest build yet, we definitely need a new one
+			changes = series()
+			changed = !file.exists(latest)
+			if (!changed)
+				dependencies = split("\n", system.mvn("dependency:tree"))
+				dependencies = filter(lambda(x, x ~ ".*be\.nabu\..*"), dependencies)
+				dependencies = replace(".*be\.nabu\..*?:([^:]+).*", "$1", dependencies)
+				# filter out any remainders like "-----" 
+				dependencies = filter(lambda(x, x ~ "[\w]+[\w-]*"), dependencies)
+				changed = false
+				# for each dependency, we check if the target jar has changed since the last modified of the latest build
+				since = file.modified(latest)
+				for (dependency : dependencies)
+					jarFile = first(file.list(nabuWorkspace + "/" + dependency + "/target", fileRegex: ".*\.jar"))
+					changedJar = jarFile == null || file.modified(nabuWorkspace + "/" + dependency + "/target/" + jarFile) > since
+					if (changedJar)
+						changed = true
+						changes = resolve(merge(changes, dependency))
+			if (changed || force)
+				result = system.mvn("clean", "package", "-Duser.timezone=UTC")
+				jar = first(file.list("target", fileRegex: ".*\.jar"))
+				zip = first(file.list("target", fileRegex: ".*\.zip"))
+				if (zip == null)
+					echo("Build failed for application " + name)
+				else
+					entries = unzip(file.read("target/" + jar))
+					buildTime = null
+					for (entry : keys(entries))
+						if (entry ~ ".*/MANIFEST.MF")
+							buildTime = replace("(?s).*Build-Time:[\s]*([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z.*", "$1$2$3$4$5$6", entries[/entry])
+					if (buildTime == null)
+						buildTime = format("yyyyMMddHHmmss", date: date())
+					newFile = nabuBuilds + "/applications/" + name + "/" + replace("(\.zip)$", "." + buildTime + "$1", zip)
+					file.write(newFile, file.read("target/" + zip))
+					# symbolic link
+					if (file.exists(latest))
+						file.delete(latest)
+					system.ln("-s", newFile, latest)
+					echo("New build for " + name + " based on " + size(changed) + " changed dependencies")
+					echo("\t" + join(", ", changes))
 			else
-				entries = unzip(file.read("target/" + jar))
-				buildTime = null
-				for (entry : keys(entries))
-					if (entry ~ ".*/MANIFEST.MF")
-						buildTime = replace("(?s).*Build-Time:[\s]*([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z.*", "$1$2$3$4$5$6", entries[/entry])
-				if (buildTime == null)
-					buildTime = format("yyyyMMddHHmmss", date: date())
-				newFile = nabuBuilds + "/applications/" + name + "/" + replace("(\.zip)$", "." + buildTime + "$1", zip)
-				file.write(newFile, file.read("target/" + zip))
-				# symbolic link
-				if (file.exists(latest))
-					file.delete(latest)
-				system.ln("-s", newFile, latest)
-				echo("New build for " + name + " based on " + size(changed) + " changed dependencies")
-				echo("\t" + join(", ", changes))
-		else
-			echo("Skipping " + name)
+				echo("Skipping " + name)

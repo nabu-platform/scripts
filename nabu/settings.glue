@@ -1,0 +1,6 @@
+homeFolder = java.lang.System.getProperty("user.home")
+nabuWorkspace = homeFolder + "/nabu/workspaces/main"
+webWorkspace ?= homeFolder + "/nabu/workspaces/web"
+nabuRepository = homeFolder + "/nabu/repositories/main"
+nabuApplications = homeFolder + "/nabu/applications"
+nabuBuilds ?= homeFolder + "/nabu/builds"

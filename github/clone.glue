@@ -10,12 +10,7 @@ temporary ?= false
 # you can also force a path for the checkout if that is relevant
 forcedPath ?= null
 
-# determine the home folder
-homeFolder = java.lang.System.getProperty("user.home")
-
-nabuRepository ?= homeFolder + "/nabu/repositories/repository"
-nabuWorkspace ?= homeFolder + "/nabu/workspaces/core"
-webWorkspace ?= homeFolder + "/nabu/workspaces/web"
+inject(nabu.settings())
 
 if (type == null)
 	type = github.get(target, project)/project/type

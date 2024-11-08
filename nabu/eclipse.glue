@@ -1,6 +1,5 @@
 ## Build an eclipse workspace for the projects
-homeFolder = java.lang.System.getProperty("user.home")
-nabuWorkspace ?= homeFolder + "/nabu/workspaces/core"
+inject(nabu.settings())
 # target specific projects
 [] project ?= null
 force ?= false

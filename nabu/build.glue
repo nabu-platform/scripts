@@ -2,8 +2,9 @@
 [] project ?= null
 type ?= null
 force ?= false
-homeFolder = java.lang.System.getProperty("user.home")
-nabuWorkspace ?= homeFolder + "/nabu/workspaces/core"
+inject(nabu.settings())
+# whether to install it immediately in the repository/applications
+install ?= true
 
 pathToInstalledPom = homeFolder + "/.m2/repository/be/nabu/core/1.0-SNAPSHOT/core-1.0-SNAPSHOT.pom"
 poms = nabuWorkspace + "/poms"
