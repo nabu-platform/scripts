@@ -1,0 +1,31 @@
+## Checks if the current directory has any changes since a particular timestamp
+## It ignores .git folders and will use the .gitignore to ignore those files as well
+since ?= null
+if (since == null)
+	lastBuild = first(file.list("target", fileRegex: ".*\.(jar|zip|nar)$", recursive: false))
+	if (lastBuild != null)
+		since = file.modified("target/" + lastBuild)
+changed = since == null
+if (!changed)
+	# get the amount of ms since it was last built
+	decimal diff = date() - since
+	# makes minutes out of it
+	integer diffmin = diff / (1000*60)
+	# find all changes within that timeframe
+	# note that because of the "accuracy" of minutes, we add one for overlap, otherwise you may have to wait a minute after a change to build it...
+	# we do a secondary check to dig into actual changes to see if they truely match the requirements
+	result = split("\n", system.find("-type", "f", "-mmin", "-" + (diffmin + 1)))
+	# check the results for non-git related changes (and non-empty)
+	ignore = series("./.git/.*", "./.gitignore")
+	if (file.exists(".gitignore"))
+		string content = file.read(".gitignore")
+		lines = split("\n", content)
+		for (line : lines)
+			ignore = resolve(merge(ignore, "." + line, "." + replace("[/]+$", "", line) + "/.*"))
+	#result = filter(lambda(x, x !~ "./(.flattened-pom.xml|.classpath|.project)" && x !~ "^./(.git|target|classes|.settings|datastore)/.*" && trim(x) != ""), result)
+	result = filter(lambda(x, true !? (x ~ ignore) && x != ""), result)
+	changedFiles = series()
+	for (single : result)
+		if (file.modified(single) > since)
+			changedFiles = resolve(merge(changedFiles, single))
+	changed = size(changedFiles) > 0
