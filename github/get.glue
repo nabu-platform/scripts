@@ -1,0 +1,7 @@
+## Get the metadata for a single project
+# In a target organisation
+target ?= "nabu-platform"
+project ?= null
+
+metadata = json.objectify(system.gh("api", "repos/" + target + "/" + project))
+project = structure(organisation: target, name: project, visibility: when(metadata/private, "private", "public"), lastActivity: metadata/updated_at, type: nabu.guessProjectType(target, project)/type)

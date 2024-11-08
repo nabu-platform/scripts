@@ -1,0 +1,18 @@
+## Clone a the nabu repositories
+target ?= "nabu-platform"
+type ?= null
+project ?= null
+eclipse ?= true
+test ?= false
+checkedout ?= false
+
+limit = when(test, 5, 500)
+
+if (project != null)
+	projects = series(github.get(target, project)/project)
+else
+	projects = github.list(target, limit)/projects
+
+for (project : projects)
+	if (type == null || project/type == type)
+		github.clone(target, project/name, type: project/type)

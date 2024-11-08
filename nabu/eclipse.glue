@@ -1,0 +1,20 @@
+## Build an eclipse workspace for the projects
+homeFolder = java.lang.System.getProperty("user.home")
+nabuWorkspace ?= homeFolder + "/nabu/workspaces/core"
+# target specific projects
+[] project ?= null
+force ?= false
+
+echo("Scanning workspace " + nabuWorkspace)
+for (file : file.list(nabuWorkspace, directoryRegex: ".*", fileRegex: null, recursive: false))
+	path = nabuWorkspace + "/" + file
+	system.cd(path)
+	# we are only interested in folders that contain a pom file
+	if (file.exists("pom.xml"))
+		# we want to check if it already has eclipse files
+		eclipseFiles = system.find("-name", "org.eclipse.*")
+		if (force || eclipseFiles == null || trim(eclipseFiles) == "")
+			echo("[" + ($index + 1) + "] Building eclipse workspace for " + file)
+			system.mvn("eclipse:eclipse")
+		else
+			echo("[" + ($index + 1) + "] Skipping " + file)

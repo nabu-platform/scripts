@@ -1,0 +1,37 @@
+## Guess the project type of a given project
+# This script _can_ get the pom from github to be sure but in bulk it is quite a bit of overhead so instead we purely base it on naming currently
+# If we ever have conflicts, the logic to check the pom file is encapsulated in the lambda checkPom, it is simply not used at this time
+target ?= "nabu-platform"
+project ?= null
+
+checkPom = lambda
+	project ?= null
+	# if we have a temporary checkout, use that
+	if (file.exists("/tmp/" + project))
+		if (file.exists("/tmp/" + project + "/pom.xml"))
+			type = "java"
+		else
+			type = "web"
+	# otherwise, we need to get the POM to determine what it is
+	else
+		echo("Inspecting pom for " + project)
+		# try to get the pom file for this project
+		parsed = json.objectify(system.gh("api", "repos/" + target + "/" + project + "/contents/pom.xml"))
+		if (parsed/status == "404" || parsed/content == null)
+			type = "web"
+		else
+			type = "java"
+
+# if we can determine the type of repo based on the name, let's do that
+if (project ~ "^eai-module-.*")
+	type = "java"
+else if (project ~ "^nabu-.*")
+	type = "repository"
+else if (project ~ "^(web|js|aris)-.*")
+	type = "web"
+else if (project == "poms" || project ~ "^pom-.*")
+	type = "pom"
+# we assume the rest is also java
+# inspecting in bulk takes too long
+else
+	type = "java"

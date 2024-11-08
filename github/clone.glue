@@ -1,0 +1,45 @@
+## Clone a repository into a specific folder depending on the type of project
+# the target organisation
+target ?= "nabu-platform"
+# a specific project in that organisation (will use all projects if not specified)
+project ?= null
+# the type of project (if it is already known)
+type ?= null
+# if it is a temporary clone, it will use the tmp folder
+temporary ?= false
+# you can also force a path for the checkout if that is relevant
+forcedPath ?= null
+
+# determine the home folder
+homeFolder = java.lang.System.getProperty("user.home")
+
+nabuRepository ?= homeFolder + "/nabu/repositories/repository"
+nabuWorkspace ?= homeFolder + "/nabu/workspaces/core"
+webWorkspace ?= homeFolder + "/nabu/workspaces/web"
+
+if (type == null)
+	type = github.get(target, project)/project/type
+
+if (type == "repository")
+	path = nabuRepository + "/" + replace("-", "/", project)
+else if (type == "java" || type == "pom")
+	path = nabuWorkspace + "/" + project
+else if (type == "web")
+	path = webWorkspace + "/" + project
+else
+	throw("Could not determine path for " + project)
+
+if (temporary)
+	path = "/tmp/" + project
+	if (file.exists(path))
+		file.delete(path)
+
+if (forcedPath != null)
+	path = forcedPath + "/" + project
+
+if (file.exists(path))
+	echo("Skipping clone of " + project + ", the target folder already exists: " + path)
+	cloned = false
+else
+	system.gh("repo", "clone", target + "/" + project, path)
+	cloned = true

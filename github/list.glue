@@ -1,0 +1,17 @@
+## List multiple repositories with their metadata
+# To prevent paging, we generally take a limit bigger than the actual amount of repositories
+target ?= "nabu-platform"
+limit ?= 500
+
+list = split("\n", system.gh("repo", "list", "--limit", limit, target))
+
+projects = series()
+
+for (single : list)
+	parts = split("[\s]+", single)
+	name = split("/", parts[0])[1]
+	visibility = parts[1]
+	lastActivity = parts[2]
+	if (name != "include-media")
+		project = structure(organisation: target, name: name, visibility: visibility, lastActivity: lastActivity, type: nabu.guessProjectType(target, name)/type)
+		projects = merge(projects, project)

@@ -1,0 +1,120 @@
+## This script will build any changed libraries
+[] project ?= null
+type ?= null
+force ?= false
+homeFolder = java.lang.System.getProperty("user.home")
+nabuWorkspace ?= homeFolder + "/nabu/workspaces/core"
+nabuRepository ?= homeFolder + "/nabu/repositories/repository"
+
+hasChanged = lambda
+	since ?= null
+	if (since == null)
+		lastBuild = first(file.list("target", fileRegex: ".*\.jar$", recursive: false))
+		if (lastBuild != null)
+			since = file.modified("target/" + lastBuild)
+	hasChanged = since == null
+	if (!hasChanged)
+		# get the amount of ms since it was last built
+		decimal diff = date() - since
+		# makes minutes out of it
+		integer diffmin = diff / (1000*60)
+		# find all changes within that timeframe
+		# note that because of the "accuracy" of minutes, we add one for overlap, otherwise you may have to wait a minute after a change to build it...
+		# we do a secondary check to dig into actual changes to see if they truely match the requirements
+		result = split("\n", system.find("-type", "f", "-mmin", "-" + (diffmin + 1)))
+		# check the results for non-git related changes (and non-empty)
+		result = filter(lambda(x, x !~ "./(.flattened-pom.xml|.classpath|.project)" && x !~ "^./(.git|target|classes|.settings|datastore)/.*" && trim(x) != ""), result)
+		changed = series()
+		for (single : result)
+			if (file.modified(single) > since)
+				changed = resolve(merge(changed, single))
+		hasChanged = size(changed) > 0
+
+if (type == "repository")
+	echo("Installing modules pom")
+	poms = nabuWorkspace + "/poms"
+	if (!file.exists(poms))
+		throw("Could not find pom files")
+	system.mvn("install:install-file", "-Dpackaging=pom", "-Dfile=" + poms + "/modules.xml", "-DpomFile=" + poms + "/modules.xml")
+else
+	pathToInstalledCore = homeFolder + "/.m2/repository/be/nabu/core/1.0-SNAPSHOT/core-1.0-SNAPSHOT.pom"
+	poms = nabuWorkspace + "/poms"
+	if (!file.exists(pathToInstalledCore) || file.modified(pathToInstalledCore) < file.modified(poms + "/core.xml"))
+		echo("Installing changed core pom")
+		if (!file.exists(poms))
+			throw("Could not find pom files")
+		system.mvn("install:install-file", "-Dpackaging=pom", "-Dfile=" + poms + "/core.xml", "-DpomFile=" + poms + "/core.xml")
+	else
+		echo("Skipping core pom")
+	system.cd(nabuWorkspace)
+	supportedProjects = series()
+
+	# If you are not targetting a specific project, rebuild everything
+	if (size(project) == 0)
+		echo("Listing supported projects...")
+		for (file : file.list(directoryRegex: ".*", fileRegex: null, recursive: false))
+			path = nabuWorkspace + "/" + file
+			if (file.exists(path + "/pom.xml") && file !~ "^packaging-.*")
+				supportedProjects = resolve(merge(supportedProjects, file))
+
+		echo("Retrieving dependencies for projects...")
+		projects = series()
+		for (file : supportedProjects)
+			path = nabuWorkspace + "/" + file
+			if (file.exists(path + "/pom.xml") && file !~ "^packaging-.*")
+				pom = xml.objectify(file.read(path + "/pom.xml"))
+				dependencies = series()
+				# we need to build a memory dependency tree to build in the correct order
+				# eai-module-maven is a circular dependency for historic reasons, ignore it
+				if (pom/dependencies != null)
+					dependencies = resolve(filter(lambda(x, x ? supportedProjects), pom/dependencies/dependency/artifactId))	# && x != "eai-module-maven"
+				project = structure(name: file, type: "java", path: path, dependencies: dependencies)
+				projects = merge(projects, project)
+		sorted = series()
+		previousSize = -1
+		size = 0
+		start = date()
+		echo("Calculating dependency order for building...")
+		while (size != previousSize)
+			sortStart = date()
+			sortedNames = sorted/name
+			unsorted = resolve(filter(lambda(x, x !? sorted), projects))
+			for (project : unsorted)
+				missing = filter(lambda(x, x !? sortedNames), project/dependencies)
+				if (size(missing) == 0)
+					sorted = resolve(merge(sorted, project))
+			previousSize = size
+			size = size(sorted)
+
+		unsorted = filter(lambda(x, x !? sorted), projects)
+		echo("Sorted " + size(sorted) + "/" + size(projects) + " java projects (" + (date() - start) + "ms)")
+		if (size(unsorted) > 0)
+			echo("Unsorted", unsorted)
+			abort()
+	else
+		sorted = resolve(derive(lambda(x, structure(name: x, type: "java", path: nabuWorkspace + "/" + x)), project))
+	failed = series()
+	for (project : sorted)
+		system.cd(project/path)
+		changeResult = hasChanged()
+		build = force || changeResult/hasChanged
+		if (build)	
+			start = date()
+			if (changeResult/changed == null)
+				echo("[" + ($index + 1) + "] Building project: " + project/name + " because no compiled version could be found")
+			else
+				echo("[" + ($index + 1) + "] Building project: " + project/name + " because " + size(changeResult/changed) + " changes were detected in the last " + changeResult/diffmin + " minutes")
+			#result = system.exec("mvn clean install")
+			result = system.mvn("clean", "install")
+			if (result ~ "(?s).*BUILD FAILURE.*")
+				failed = merge(failed, project)
+				echo("\tBuild failed (" + (date() - start) + "ms)")
+				answer = input("\tShould we continue? [Y/n] ")
+				if (answer == "n")
+					abort()
+			else
+				echo("\tBuild successful (" + (date() - start) + "ms)")
+		else
+			echo("[" + ($index + 1) + "] Skipping " + project/name)
+	if (size(failed) > 0)
+		echo("These projects failed: ", failed/name)
