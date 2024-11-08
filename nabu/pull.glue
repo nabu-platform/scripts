@@ -10,7 +10,7 @@ for (file : file.list(directoryRegex: ".*", fileRegex: null, recursive: false))
 
 system.cd(nabuRepository)
 for (file : file.list(directoryRegex: ".git", recursive: true))
-	file = replace("/git$", "", file)
+	file = replace("/.git$", "", file)
 	path = nabuRepository + "/" + file
 	system.cd(path)
 	echo("Pulling " + file)
