@@ -1,0 +1,9 @@
+inject(nabu.settings())
+
+system.cd(nabuWorkspace)
+for (file : file.list(directoryRegex: ".*", fileRegex: null, recursive: false))
+	path = nabuWorkspace + "/" + file
+	system.cd(path)
+	if (file.exists(".git))
+		echo("Pulling " + file)
+		system.git("pull")
