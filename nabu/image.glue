@@ -58,10 +58,7 @@ system.unzip(zip)
 
 mainJar = first(file.list(temporary + "/lib", fileRegex: "eai-developer-.*\.jar"))
 
-logo = settings/workspaces + "/logo.png"
-if (!file.exists(logo))
-	file.write(logo, file.read("https://github.com/nabu-platform/eai-developer/blob/master/src/main/resources/icon.png?raw=true"))
-
+logo = nabuWorkspace + "/eai-developer/src/main/resources/icon.png"
 command = jpackage + " --input " + nabuApplications + "/developer/lib"
 	+ " --name 'Nabu Developer'"
 	+ " --java-options '-Xmx8096m -Dprism.maxvram=2048m'"
