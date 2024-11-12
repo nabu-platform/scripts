@@ -1,0 +1,24 @@
+# what do we call it? e.g. "javafx"
+name ?= null
+# the name of the binary, e.g. "openjfx"
+binary ?= when(name == "javafx", "openjfx", name)
+# the package we would need to install to get this, e.g. "default-jdk"
+package ?= when(name == "java", "default-jdk", binary)
+
+findIt = lambda
+	@return
+	path = system.whereis(binary)
+	if (path ~ "^" + binary + ":[\s]*/[\w]+.*")
+		path = first(find("^" + binary + ":[\s]*(/[\w/]+)", path))
+	else
+		path = null
+
+path = findIt()
+
+# We can offer to find it
+if (path == null && file.exists("/usr/bin/apt-get"))
+	answer = input("Could not find an existing installation of " + name + ", do you want to install it? [Y/n] ")
+	if (answer != "n")
+		system.exec("sudo apt-get install " + package)
+		# try to find it again
+		path = findIt()

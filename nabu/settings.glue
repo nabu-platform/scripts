@@ -1,6 +1,59 @@
 homeFolder = java.lang.System.getProperty("user.home")
-nabuWorkspace = homeFolder + "/nabu/workspaces/main"
+nabuWorkspace ?= homeFolder + "/nabu/workspaces/main"
 webWorkspace ?= homeFolder + "/nabu/workspaces/web"
 nabuRepository = homeFolder + "/nabu/repositories/main"
 nabuApplications = homeFolder + "/nabu/applications"
 nabuBuilds ?= homeFolder + "/nabu/builds"
+
+settingsFile = homeFolder + "/.nabu-configuration.json"
+
+if (file.exists(settingsFile))
+	settings = json.objectify(file.read(settingsFile))
+else
+	settings = structure()
+	newSettings = true
+
+configure = method
+	prompt ?= null
+	key ?= null
+	# the value we propose as default
+	defaultValue ?= null
+	# Only prompt for new configuration if it is necessary, otherwise we just send back the current value
+	force ?= false
+	required ?= true
+
+	if (defaultValue != null)
+		prompt = prompt + " [" + defaultValue + "] "
+	else
+		prompt = prompt + " "
+
+	@return
+	value = settings[/key]
+
+	if (value == null || force)
+		value = trim(input(prompt))
+		if (value == null || value == "")
+			value = defaultValue
+		if (required && value == null)
+			throw("Need configuration before we can proceed: " + key)
+		@persist
+		settings = structure(settings, lambda(key): value)
+		file.write(settingsFile, json.stringify(settings, pretty: true))
+
+if (newSettings)
+	echo("No configuration was found, let's set up your Nabu environment before we continue")
+
+configure(prompt: "Folder where the java and web workspaces will be stored", key: "workspaces", defaultValue: homeFolder + "/nabu/workspaces")
+configure(prompt: "Folder where the nabu repositories will be added", key: "repositories", defaultValue: homeFolder + "/nabu/repositories")
+configure(prompt: "Folder where the the built files will be stored", key: "builds", defaultValue: homeFolder + "/nabu/builds")
+configure(prompt: "Folder where the the applications will be installed", key: "applications", defaultValue: homeFolder + "/nabu/applications")
+
+# The things we need to run
+java = configure(prompt: "Where is your java installation?", key: "java", defaultValue: nabu.findInstalled("java", package: "default-jdk")/path)
+javafx = configure(prompt: "Where is your javafx installation?", key: "javafx", defaultValue: nabu.findInstalled("javafx", binary: "openjfx")/path)
+
+nabuWorkspace = settings/workspaces + "/main"
+webWorkspace = settings/workspaces + "/web"
+nabuRepository = settings/repositories + "/main"
+nabuApplications = settings/applications
+nabuBuilds = settings/builds
