@@ -11,7 +11,7 @@ for (file : file.list(nabuWorkspace, directoryRegex: ".*", fileRegex: null, recu
 	# we are only interested in folders that contain a pom file
 	if (file.exists("pom.xml"))
 		# we want to check if it already has eclipse files
-		eclipseFiles = system.find("-name", "org.eclipse.*")
+		eclipseFiles = system.find(".", "-name", "org.eclipse.*")
 		if (force || eclipseFiles == null || trim(eclipseFiles) == "")
 			echo("[" + ($index + 1) + "] Building eclipse workspace for " + file)
 			system.mvn("eclipse:eclipse")
