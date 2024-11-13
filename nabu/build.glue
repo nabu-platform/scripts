@@ -38,7 +38,7 @@ if (size(project) == 0)
 			if (pom/dependencies != null)
 				dependencies = resolve(filter(lambda(x, x ? supportedProjects), pom/dependencies/dependency/artifactId))	# && x != "eai-module-maven"
 			project = structure(name: file, type: "java", path: path, dependencies: dependencies)
-			projects = merge(projects, project)
+			projects = resolve(merge(projects, project))
 	sorted = series()
 	previousSize = -1
 	size = 0

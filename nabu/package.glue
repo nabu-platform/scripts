@@ -15,45 +15,79 @@ if (type == "repository" || type == null)
 		system.mvn("install:install-file", "-Dpackaging=pom", "-Dfile=" + poms + "/modules.xml", "-DpomFile=" + poms + "/modules.xml")
 	else
 		echo("Skipping module pom")
+
 	# loop over all modules
 	system.cd(nabuRepository)
-	counter = 1
+	modules = series()
 	for (file : file.list(directoryRegex: ".git", fileRegex: null, recursive: true))
 		file = replace("/.git$", "", file)
-		if (project == null || position(file, project) >= 0 || position(replace("/", "-", file), project) >= 0)
+		if (project == null || position(file, project) >= 0 || position(replace("/", ".", file), project) >= 0)
 			path = nabuRepository + "/" + file
-			# if it is a git repository, check it
 			if (file.exists(path + "/.git") && file.exists(path + "/pom.xml"))
 				system.cd(path)
-				changed = true
-				# we want to check the latest build
-				latest = nabuBuilds + "/modules/" + replace("/", "-", file) + "/latest.nar"
+				pom = xml.objectify(file.read("pom.xml"))
+				dependencies = series()
+				if (pom/dependencies != null)
+					dependencies = resolve(derive(lambda(x, x/groupId + "." + x/artifactId), pom/dependencies/dependency))
+				module = structure(name: replace("/", ".", file), type: "repository", path: path, dependencies: dependencies)
+				modules = resolve(merge(modules, module))
+
+	sorted = series()
+	previousSize = -1
+	size = 0
+	start = date()
+	echo("Calculating dependency order for packaging...")
+	while (size != previousSize)
+		sortStart = date()
+		sortedNames = sorted/name
+		unsorted = resolve(filter(lambda(x, x !? sorted), modules))
+		for (module : unsorted)
+			missing = filter(lambda(x, x !? sortedNames), module/dependencies)
+			if (size(missing) == 0)
+				sorted = resolve(merge(sorted, module))
+		previousSize = size
+		size = size(sorted)
+
+	unsorted = filter(lambda(x, x !? sorted), modules)
+	echo("Sorted " + size(sorted) + "/" + size(modules) + " modules (" + (date() - start) + "ms)")
+	if (size(unsorted) > 0)
+		echo("Unsorted", unsorted)
+		abort()
+
+	counter = 1
+	for (module : sorted)
+		path = module/path
+		# if it is a git repository, check it
+		system.cd(path)
+		changed = true
+		# we want to check the latest build
+		latest = nabuBuilds + "/modules/" + module/name + "/latest.nar"
+		if (file.exists(latest))
+			changed = linux.changed(file.modified(latest))/changed
+		if (changed || force)
+			system.mvn("clean", "install", "-Duser.timezone=UTC")
+			# according to the modules pom, it will be built in the tmp folder
+			pom = xml.objectify(file.read("pom.xml"))
+			expectedBuildPath = "/tmp/" + pom/groupId + "." + pom/artifactId + "/" + pom/groupId + "." + pom/artifactId + "." + pom/version + ".jar"
+			if (file.exists(expectedBuildPath))
+				entries = unzip(file.read(expectedBuildPath))
+				for (entry : keys(entries))
+					if (entry ~ ".*/MANIFEST.MF")
+						buildTime = replace("(?s).*Build-Time:[\s]*([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z.*", "$1$2$3$4$5$6", entries[/entry])
+						if (buildTime == null)
+							buildTime = format("yyyyMMddHHmmss", date: date())
+				newFile = nabuBuilds + "/modules/" + module/name + "/" + module/name + "." + pom/version + "." + buildTime + ".nar"
+				# copy the file
+				file.write(newFile, file.read(expectedBuildPath))
+				# remove a potentially existing symbolic link and create a new symbolic link
 				if (file.exists(latest))
-					changed = linux.changed(file.modified(latest))/changed
-				if (changed || force)
-					system.mvn("clean", "install", "-Duser.timezone=UTC")
-					# according to the modules pom, it will be built in the tmp folder
-					pom = xml.objectify(file.read("pom.xml"))
-					expectedBuildPath = "/tmp/" + pom/groupId + "." + pom/artifactId + "/" + pom/groupId + "." + pom/artifactId + "." + pom/version + ".jar"
-					if (file.exists(expectedBuildPath))
-						entries = unzip(file.read(expectedBuildPath))
-						for (entry : keys(entries))
-							if (entry ~ ".*/MANIFEST.MF")
-								buildTime = replace("(?s).*Build-Time:[\s]*([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z.*", "$1$2$3$4$5$6", entries[/entry])
-								if (buildTime == null)
-									buildTime = format("yyyyMMddHHmmss", date: date())
-						newFile = nabuBuilds + "/modules/" + replace("/", "-", file) + "/" + replace("/", ".", file) + "." + pom/version + "." + buildTime + ".nar"
-						# copy the file
-						file.write(newFile, file.read(expectedBuildPath))
-						# remove a potentially existing symbolic link and create a new symbolic link
-						if (file.exists(latest))
-							file.delete(latest)
-						system.ln("-s", newFile, latest)
-						echo("[" + counter + "] New build for " + file)
-					else
-						echo("[" + counter + "] Build failed for " + file + ", could not find file: " + expectedBuildPath)
-				else
-					echo("[" + counter + "] Skipping " + file)
+					file.delete(latest)
+				system.ln("-s", newFile, latest)
+				echo("[" + counter + "] New build for " + module/name)
+			else
+				echo("[" + counter + "] Build failed for " + module/name + ", could not find file: " + expectedBuildPath)
+		else
+			echo("[" + counter + "] Skipping " + module/name)
 		counter = counter + 1
 
 if (type == "java" || type == null)
