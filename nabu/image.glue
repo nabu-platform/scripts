@@ -8,6 +8,9 @@ jpackage = configure(prompt: "To create images, we need jpackage, where can it b
 
 os = java.lang.System.getProperty("os.name")
 
+temporary = "/tmp/developer-" + uuid()
+system.mkdir(temporary)
+
 # windows
 if (os ~ "(?i).*win.*")
 	type = "exe"
@@ -54,8 +57,6 @@ for (entry : keys(entries))
 if (version == null)
 	throw("Could not get correct version")
 
-temporary = "/tmp/developer-" + uuid()
-system.mkdir(temporary)
 system.cp("target/" + zip, temporary)
 system.cd(temporary)
 system.unzip(zip)
@@ -63,11 +64,14 @@ system.unzip(zip)
 mainJar = first(file.list(temporary + "/lib", fileRegex: "eai-developer-.*\.jar"))
 
 echo("Creating " + type + " image for developer")
-command = jpackage + " --input " + nabuApplications + "/developer/lib"
+command = jpackage + " --input " + temporary + "/lib"
 	+ " --name 'Nabu Developer'"
 	+ " --java-options '-Xmx8096m -Dprism.maxvram=2048m -Dvm.screenshot=true -Dshow.hidden=false -Dbe.nabu.eai.repository.cacheModules=true -Dsshj=true -Dsun.java2d.xrender=false -Dversion=2 -Ddevelopment=true'"
 	+ " --main-jar " + mainJar
 	+ " --main-class 'be.nabu.eai.developer.Main'"
+	+ " --about-url 'https://nabu.be'"
+	+ " --description 'The IDE of the Nabu Platform'"
+	+ " --license-file " + path + "/LICENSE"
 	+ " --runtime-image " + jre
 	+ " --icon " + logo
 	+ " --app-version " + version
@@ -75,8 +79,31 @@ command = jpackage + " --input " + nabuApplications + "/developer/lib"
 	+ " --type " + type
 	+ " --dest " + nabuApplications
 
+if (parameters != null)
+	command = command + " " + parameters
+
 # Build a runnable package
 system.eval(command)
+
+# there is a bug that the desktop file does not include a particular setting which is needed by gnome to link back the running application to the correct desktop file
+# this results in the application having a correct icon in activities but not in the dock on the left once running, instead you get a cog.
+# additionally you can't pin the application itself to the dock
+# this desktop file exists in two locations (on ubuntu 2024): /usr/share/applications and /opt/nabu-developer/lib.
+# to manually fix this, you need to add the StartupWMClass entry to both files
+# an alternative solution is to rewrite the deb to include the entry
+if (type == "deb")
+	current = last(sort(lambda(a, b, when(a > b, 1, -1)), file.list(nabuApplications, fileRegex: ".*\.deb")))
+	echo("Rewriting current: " + current)
+	system.mv(nabuApplications + "/" + current, temporary + "/" + current)
+	system.mkdir("deb")
+	# unpackage the deb file
+	system.eval("dpkg-deb -R " + current + " deb")
+	string content = file.read("deb/opt/nabu-developer/lib/nabu-developer-Nabu_Developer.desktop")
+	content = content + "StartupWMClass=be.nabu.eai.developer.Main\n"
+	file.write("deb/opt/nabu-developer/lib/nabu-developer-Nabu_Developer.desktop", content)
+	# repackage updated deb file
+	system.eval("dpkg-deb -b deb " + current)
+	system.mv(current, nabuApplications + "/" + current)
 
 # Remove the tmp folder
 file.delete(temporary)
