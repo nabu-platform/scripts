@@ -31,7 +31,9 @@ jre = nabuApplications + "/jre"
 if (file.exists(jre) && forceJre)
 	file.delete(jre)
 if (!file.exists(jre) || forceJre)
-	system.eval(jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql --output " + jre)
+	command = jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql,java.xml --output " + jre
+	system.eval(command)
+	echo(command)
 
 # make sure we have an up to date package
 nabu.package(project: "developer", type: "java")

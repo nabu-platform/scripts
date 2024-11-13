@@ -8,8 +8,17 @@ if (type == null || type == "java")
 		path = nabuWorkspace + "/" + file
 		system.cd(path)
 		if (file.exists(".git"))
-			echo("Pulling " + file)
-			system.git("pull")
+			branches = split("\n", system.git("branch"))
+			if ("* master" !? branches)
+				echo("Skipping " + file + " because you do not appear to be in the master branch")
+			else
+				result = split("\n", system.git("remote"))
+				if ("upstream" ? result)
+					echo("Pulling upstream " + file)
+					system.get("pull upstream")
+				else
+					echo("Pulling origin " + file)
+					system.git("pull origin")
 
 if (type == null || type == "repository")
 	system.cd(nabuRepository)
@@ -17,5 +26,14 @@ if (type == null || type == "repository")
 		file = replace("/.git$", "", file)
 		path = nabuRepository + "/" + file
 		system.cd(path)
-		echo("Pulling " + file)
-		system.git("pull")
+		branches = split("\n", system.git("branch"))
+		if ("* master" !? branches)
+			echo("Skipping " + file + " because you do not appear to be in the master branch")
+		else
+			result = split("\n", system.git("remote"))
+			if ("upstream" ? result)
+				echo("Pulling upstream " + file)
+				system.get("pull upstream")
+			else
+				echo("Pulling origin " + file)
+				system.git("pull origin")
