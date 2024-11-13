@@ -14,7 +14,7 @@ if (!changed)
 	# find all changes within that timeframe
 	# note that because of the "accuracy" of minutes, we add one for overlap, otherwise you may have to wait a minute after a change to build it...
 	# we do a secondary check to dig into actual changes to see if they truely match the requirements
-	result = split("\n", system.find("-type", "f", "-mmin", "-" + (diffmin + 1)))
+	result = split("\n", system.find(".", "-type", "f", "-mmin", "-" + (diffmin + 1)))
 	# check the results for non-git related changes (and non-empty)
 	ignore = series("./.git/.*", "./.gitignore")
 	if (file.exists(".gitignore"))
