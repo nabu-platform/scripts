@@ -11,16 +11,20 @@ os = java.lang.System.getProperty("os.name")
 # windows
 if (os ~ "(?i).*win.*")
 	type = "exe"
+	logo = nabuWorkspace + "/eai-developer/src/main/resources/icon.png"
 # apple
 else if (os ~ "(?i).*(mac|darwin).*")
 	type = "dmg"
+	logo = nabuWorkspace + "/eai-developer/src/main/resources/icon.icns"
 # might need
 else if (findInstalled("apt-get", install: false)/path != null)
 	type = "deb"
 	# need fakeroot to build deb packages
 	fakeroot = nabu.findInstalled("fakeroot")/path
+	logo = nabuWorkspace + "/eai-developer/src/main/resources/icon.png"
 else
 	type = "rpm"
+	logo = nabuWorkspace + "/eai-developer/src/main/resources/icon.png"
 
 # Build a custom java runtime
 jre = nabuApplications + "/jre"
@@ -58,7 +62,6 @@ system.unzip(zip)
 
 mainJar = first(file.list(temporary + "/lib", fileRegex: "eai-developer-.*\.jar"))
 
-logo = nabuWorkspace + "/eai-developer/src/main/resources/icon.png"
 command = jpackage + " --input " + nabuApplications + "/developer/lib"
 	+ " --name 'Nabu Developer'"
 	+ " --java-options '-Xmx8096m -Dprism.maxvram=2048m'"
