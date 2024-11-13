@@ -32,14 +32,14 @@ for (application : applications)
 				# create a runnable file
 
 				if (application == "developer")
-					runnableFile = nabuApplications + "/nabu-developer"
+					runnableFile = nabuApplications + "/nabu-developer.sh"
 					if (!file.exists(runnableFile))
 						content = java + " -Xmx8096m --module-path " + javafx + "/lib --add-modules=ALL-MODULE-PATH,java.sql -Dvm.screenshot=true -Dshow.hidden=false -Dnio.debug.pipeline=false -Dbe.nabu.eai.repository.cacheModules=true -Dhttp.client.debug=false -Dsshj=true -Dsun.java2d.xrender=false -Dversion=2 -Ddevelopment=true -cp '" + applicationPath + "/lib/*:.' be.nabu.eai.developer.Main " + '"$@"'
 						file.write(runnableFile, content)
 						# make sure we can run it
 						system.chmod("u+x", runnableFile)
 				else if (application == "integrator")
-					runnableFile = nabuApplications + "/nabu-integrator"
+					runnableFile = nabuApplications + "/nabu-integrator.sh"
 					if (!file.exists(runnableFile))
 						content = java + " -Xmx8096m -noverify -Dhttp.streamingMode=true -Dhttp.client.debug=false -Dnio.debug.pipeline=false -Ddevelopment=true -Dversion=2 -Dmath.always.doubles=true -cp '" + applicationPath + "/lib/*:.' be.nabu.eai.server.Standalone " + '"$@"'
 						file.write(runnableFile, content)
