@@ -33,6 +33,8 @@ if (file.exists(jre) && forceJre)
 if (!file.exists(jre) || forceJre)
 	system.eval(jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql --output " + jre)
 
+# make sure we have an up to date package
+nabu.package(project: "developer", type: "java")
 
 path = nabuWorkspace + "/packaging-developer"
 system.cd(path)
@@ -40,11 +42,7 @@ jar = first(file.list("target", fileRegex: ".*\.jar"))
 zip = first(file.list("target", fileRegex: ".*\.zip"))
 
 if (jar == null || zip == null)
-	system.mvn("clean package")
-	jar = first(file.list("target", fileRegex: ".*\.jar"))
-	zip = first(file.list("target", fileRegex: ".*\.zip"))
-	if (jar == null || zip == null)
-		throw("Could not find or create developer package")
+	throw("Could not find or create developer package")
 
 entries = unzip(file.read("target/" + jar))
 for (entry : keys(entries))
