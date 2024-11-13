@@ -1,6 +1,6 @@
 type ?= null
 
-[] projects ?= null
+[] project ?= null
 
 inject(nabu.settings())
 
@@ -10,7 +10,7 @@ if (type == null || type == "java")
 		path = nabuWorkspace + "/" + file
 		system.cd(path)
 		if (file.exists(".git"))
-			if (projects == null || file ? projects)
+			if (project == null || file ? project)
 				branches = split("\n", system.git("branch"))
 				if ("* master" !? branches)
 					echo("Skipping " + file + " because you do not appear to be in the master branch")
@@ -27,7 +27,7 @@ if (type == null || type == "repository")
 	system.cd(nabuRepository)
 	for (file : file.list(directoryRegex: ".git", recursive: true))
 		file = replace("/.git$", "", file)
-		if (projects == null || replace("/", ".", file) ? projects || replace("/", "-", file) ? projects || file ? projects)
+		if (project == null || replace("/", ".", file) ? project || replace("/", "-", file) ? project || file ? project)
 			path = nabuRepository + "/" + file
 			system.cd(path)
 			branches = split("\n", system.git("branch"))
