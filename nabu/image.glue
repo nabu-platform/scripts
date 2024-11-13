@@ -34,7 +34,7 @@ jre = nabuApplications + "/jre"
 if (file.exists(jre) && forceJre)
 	file.delete(jre)
 if (!file.exists(jre) || forceJre)
-	command = jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql,java.xml --output " + jre
+	command = jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql,java.xml,java.lang --output " + jre
 	system.eval(command)
 	echo(command)
 
