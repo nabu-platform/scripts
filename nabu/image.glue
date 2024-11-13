@@ -60,6 +60,7 @@ system.unzip(zip)
 
 mainJar = first(file.list(temporary + "/lib", fileRegex: "eai-developer-.*\.jar"))
 
+echo("Creating " + type + " image for developer")
 command = jpackage + " --input " + nabuApplications + "/developer/lib"
 	+ " --name 'Nabu Developer'"
 	+ " --java-options '-Xmx8096m -Dprism.maxvram=2048m -Dvm.screenshot=true -Dshow.hidden=false -Dbe.nabu.eai.repository.cacheModules=true -Dsshj=true -Dsun.java2d.xrender=false -Dversion=2 -Ddevelopment=true'"

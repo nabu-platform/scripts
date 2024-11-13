@@ -87,7 +87,7 @@ if (type == "repository" || type == null)
 			else
 				echo("[" + counter + "] Build failed for " + module/name + ", could not find file: " + expectedBuildPath)
 		else
-			echo("[" + counter + "] Skipping " + module/name)
+			echo("[" + counter + "] Skipping package for " + module/name)
 		counter = counter + 1
 
 if (type == "java" || type == null)
@@ -142,4 +142,4 @@ if (type == "java" || type == null)
 					echo("New build for " + name + " based on " + size(changed) + " changed dependencies")
 					echo("\t" + join(", ", changes))
 			else
-				echo("Skipping " + name)
+				echo("Skipping package for " + name)
