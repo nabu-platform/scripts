@@ -1,5 +1,7 @@
 type ?= null
 
+[] projects ?= null
+
 inject(nabu.settings())
 
 if (type == null || type == "java")
@@ -8,6 +10,26 @@ if (type == null || type == "java")
 		path = nabuWorkspace + "/" + file
 		system.cd(path)
 		if (file.exists(".git"))
+			if (projects == null || file ? projects)
+				branches = split("\n", system.git("branch"))
+				if ("* master" !? branches)
+					echo("Skipping " + file + " because you do not appear to be in the master branch")
+				else
+					result = split("\n", system.git("remote"))
+					if ("upstream" ? result)
+						echo("Pulling upstream " + file)
+						system.get("pull", "upstream", "master")
+					else
+						echo("Pulling origin " + file)
+						system.git("pull", "origin", "master")
+
+if (type == null || type == "repository")
+	system.cd(nabuRepository)
+	for (file : file.list(directoryRegex: ".git", recursive: true))
+		file = replace("/.git$", "", file)
+		if (projects == null || replace("/", ".", file) ? projects || replace("/", "-", file) ? projects || file ? projects)
+			path = nabuRepository + "/" + file
+			system.cd(path)
 			branches = split("\n", system.git("branch"))
 			if ("* master" !? branches)
 				echo("Skipping " + file + " because you do not appear to be in the master branch")
@@ -19,21 +41,3 @@ if (type == null || type == "java")
 				else
 					echo("Pulling origin " + file)
 					system.git("pull", "origin", "master")
-
-if (type == null || type == "repository")
-	system.cd(nabuRepository)
-	for (file : file.list(directoryRegex: ".git", recursive: true))
-		file = replace("/.git$", "", file)
-		path = nabuRepository + "/" + file
-		system.cd(path)
-		branches = split("\n", system.git("branch"))
-		if ("* master" !? branches)
-			echo("Skipping " + file + " because you do not appear to be in the master branch")
-		else
-			result = split("\n", system.git("remote"))
-			if ("upstream" ? result)
-				echo("Pulling upstream " + file)
-				system.get("pull", "upstream", "master")
-			else
-				echo("Pulling origin " + file)
-				system.git("pull", "origin", "master")
