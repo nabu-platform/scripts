@@ -52,5 +52,11 @@ for (application : applications)
 						file.write(runnableFile, content)
 						# make sure we can run it
 						system.chmod("u+x", runnableFile)
+					runnableFile = nabuApplications + "/glue-shell"
+					if (!file.exists(runnableFile))
+						content = java + " -Dglass.platform=Monocle -Dmonocle.platform=Headless -Dglue.parallel=true -Dhttp.client.debug=true -Dversion=2 -Ddevelopment=true -Dmath.always.doubles=true -cp '" + applicationPath + "/lib/*' be.nabu.glue.Shell " + '"$@"'
+						file.write(runnableFile, content)
+						# make sure we can run it
+						system.chmod("u+x", runnableFile)
 	else
 		echo("Skipping " + project)
