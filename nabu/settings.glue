@@ -43,10 +43,11 @@ configure = method
 if (newSettings)
 	echo("No configuration was found, let's set up your Nabu environment before we continue")
 
-configure(prompt: "Folder where the java and web workspaces will be stored", key: "workspaces", defaultValue: homeFolder + "/nabu/workspaces")
-configure(prompt: "Folder where the nabu repositories will be added", key: "repositories", defaultValue: homeFolder + "/nabu/repositories")
-configure(prompt: "Folder where the the built files will be stored", key: "builds", defaultValue: homeFolder + "/nabu/builds")
-configure(prompt: "Folder where the the applications will be installed", key: "applications", defaultValue: homeFolder + "/nabu/applications")
+nabuFolder = configure(prompt: "Folder where nabu related files should be stored", key: "home", defaultValue: java.lang.System.getProperty("user.home") + "/nabu")
+configure(prompt: "Folder where the java and web workspaces will be stored", key: "workspaces", defaultValue: nabuFolder + "/workspaces")
+configure(prompt: "Folder where the nabu repositories will be added", key: "repositories", defaultValue: nabuFolder + "/repositories")
+configure(prompt: "Folder where the the built files will be stored", key: "builds", defaultValue: nabuFolder + "/builds")
+configure(prompt: "Folder where the the applications will be installed", key: "applications", defaultValue: nabuFolder + "/applications")
 
 # The things we need to run
 java = configure(prompt: "Where is your java installation?", key: "java", defaultValue: nabu.findInstalled("java", package: "default-jdk")/path)

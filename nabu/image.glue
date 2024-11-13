@@ -15,7 +15,7 @@ if (os ~ "(?i).*win.*")
 else if (os ~ "(?i).*(mac|darwin).*")
 	type = "dmg"
 # might need
-else if (file.exists("/usr/bin/apt-get"))
+else if (findInstalled("apt-get", install: false)/path != null)
 	type = "deb"
 	# need fakeroot to build deb packages
 	fakeroot = nabu.findInstalled("fakeroot")/path

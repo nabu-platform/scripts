@@ -4,21 +4,31 @@ name ?= null
 binary ?= when(name == "javafx", "openjfx", name)
 # the package we would need to install to get this, e.g. "default-jdk"
 package ?= when(name == "java", "default-jdk", binary)
+# should we attempt installation?
+install ?= true
 
 findIt = lambda
+	search ?= binary
 	@return
-	path = system.whereis(binary)
-	if (path ~ "^" + binary + ":[\s]*/[\w]+.*")
-		path = first(find("^" + binary + ":[\s]*(/[\w/]+)", path))
+	path = system.whereis(search)
+	if (path ~ "^" + search + ":[\s]*/[\w]+.*")
+		path = first(find("^" + search + ":[\s]*(/[\w/]+)", path))
 	else
 		path = null
 
 path = findIt()
 
 # We can offer to find it
-if (path == null && file.exists("/usr/bin/apt-get"))
-	answer = input("Could not find an existing installation of " + name + ", do you want to install it? [Y/n] ")
-	if (answer != "n")
-		system.exec("sudo apt-get install " + package)
-		# try to find it again
-		path = findIt()
+if (path == null && install)
+	if (findIt("apt-get")/path != null)
+		command = "apt-get"
+	else if (findIt("brew")/path != null)
+		command = "brew"
+	else if (findIt("yum")/path != null)
+		command = "yum"
+	if (command != null)
+		answer = input("Could not find an existing installation of " + name + ", do you want to install it? [Y/n] ")
+		if (answer != "n")
+			system.exec("sudo apt-get install " + package)
+			# try to find it again
+			path = findIt()
