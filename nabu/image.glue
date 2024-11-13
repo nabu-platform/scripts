@@ -34,9 +34,10 @@ jre = nabuApplications + "/jre"
 if (file.exists(jre) && forceJre)
 	file.delete(jre)
 if (!file.exists(jre) || forceJre)
-	command = jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql,java.xml,java.lang --output " + jre
+	# you can use the following command to get an overview of the default modules:
+	# java --list-modules
+	command = jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql,java.xml,java.management --output " + jre
 	system.eval(command)
-	echo(command)
 
 # make sure we have an up to date package
 nabu.package(project: "developer", type: "java")
