@@ -1,5 +1,6 @@
 inject(nabu.settings())
-[] projects = null
+# options are integrator, developer & cli
+[] project ?= series("developer")
 forceJre ?= false
 
 jmods = configure(prompt: "We need to create a java version with javafx embedded, this requires 'jmods', you can download them here for your system: https://gluonhq.com/products/javafx/. Where did you unzip them?", key: "jmods")
@@ -7,9 +8,6 @@ jlink = configure(prompt: "To create images, we need jlink, where can it be foun
 jpackage = configure(prompt: "To create images, we need jpackage, where can it be found on your system?", key: "jpackage", defaultValue: nabu.findInstalled("jpackage", package: "default-jdk")/path)
 
 os = java.lang.System.getProperty("os.name")
-
-temporary = "/tmp/developer-" + uuid()
-system.mkdir(temporary)
 
 # windows
 if (os ~ "(?i).*win.*")
@@ -29,82 +27,156 @@ else
 	type = "rpm"
 	logo = nabuWorkspace + "/eai-developer/src/main/resources/icon.png"
 
-# Build a custom java runtime
-jre = nabuApplications + "/jre"
-if (file.exists(jre) && forceJre)
-	file.delete(jre)
-if (!file.exists(jre) || forceJre)
-	# you can use the following command to get an overview of the default modules:
-	# java --list-modules
-	command = jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql,java.xml,java.management,jdk.management,jdk.management.agent,jdk.jconsole,java.instrument,jdk.crypto.ec,java.security.jgss --output " + jre
-	system.eval(command)
+# if you want to build developer, make sure we have the jre with all the javafx stuff
+if ("developer" ? project)
+	# Build a custom java runtime
+	jre = nabuApplications + "/jre"
+	if (file.exists(jre) && forceJre)
+		file.delete(jre)
+	if (!file.exists(jre) || forceJre)
+		# you can use the following command to get an overview of the default modules:
+		# java --list-modules
+		command = jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql,java.xml,java.management,jdk.management,jdk.management.agent,jdk.jconsole,java.instrument,jdk.crypto.ec,java.security.jgss --output " + jre
+		system.eval(command)
+else if ("cli" ? project || "integrator" ? project)
+	# Build a custom java runtime
+	jre = nabuApplications + "/jre-headless"
+	if (file.exists(jre) && forceJre)
+		file.delete(jre)
+	if (!file.exists(jre) || forceJre)
+		# you can use the following command to get an overview of the default modules:
+		# java --list-modules
+		command = jlink + " --module-path 'mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql,java.xml,java.management,jdk.management,jdk.management.agent,jdk.jconsole,java.instrument,jdk.crypto.ec,java.security.jgss --output " + jre
+		system.eval(command)
 
-# make sure we have an up to date package
-nabu.package(project: "developer", type: "java")
+for (singleProject : project)
+	if (singleProject == "glue")
+		# packaging name for it...
+		singleProject = "cli"
+	temporary = "/tmp/" + singleProject + "-" + uuid()
+	system.mkdir(temporary)
+	# make sure we have an up to date package
+	nabu.package(project: singleProject, type: "java")
 
-path = nabuWorkspace + "/packaging-developer"
-system.cd(path)
-jar = first(file.list("target", fileRegex: ".*\.jar"))
-zip = first(file.list("target", fileRegex: ".*\.zip"))
+	path = nabuWorkspace + "/packaging-" + singleProject
+	system.cd(path)
+	jar = first(file.list("target", fileRegex: ".*\.jar"))
+	zip = first(file.list("target", fileRegex: ".*\.zip"))
 
-if (jar == null || zip == null)
-	throw("Could not find or create developer package")
+	if (jar == null || zip == null)
+		throw("Could not find or create developer package")
 
-entries = unzip(file.read("target/" + jar))
-for (entry : keys(entries))
-	if (entry ~ ".*/MANIFEST.MF")
-		version = replace("(?s).*Build-Time:[\s]*([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z.*", "$1$2$3$4$5$6", entries[/entry])
+	entries = unzip(file.read("target/" + jar))
+	for (entry : keys(entries))
+		if (entry ~ ".*/MANIFEST.MF")
+			version = replace("(?s).*Build-Time:[\s]*([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z.*", "$1$2$3$4$5$6", entries[/entry])
 
-if (version == null)
-	throw("Could not get correct version")
+	if (version == null)
+		throw("Could not get correct version")
 
-system.cp("target/" + zip, temporary)
-system.cd(temporary)
-system.unzip(zip)
+	system.cp("target/" + zip, temporary)
+	system.cd(temporary)
+	system.unzip(zip)
 
-mainJar = first(file.list(temporary + "/lib", fileRegex: "eai-developer-.*\.jar"))
+	if (singleProject == "developer")
+		jre = nabuApplications + "/jre"
+		mainJar = first(file.list(temporary + "/lib", fileRegex: "eai-developer-.*\.jar"))
 
-echo("Creating " + type + " image for developer")
-command = jpackage + " --input " + temporary + "/lib"
-	+ " --name 'Nabu Developer'"
-	+ " --java-options '-Xmx8096m -Dprism.maxvram=2048m -Dvm.screenshot=true -Dshow.hidden=false -Dbe.nabu.eai.repository.cacheModules=true -Dsshj=true -Dsun.java2d.xrender=false -Dversion=2 -Ddevelopment=true'"
-	+ " --main-jar " + mainJar
-	+ " --main-class 'be.nabu.eai.developer.Main'"
-	+ " --about-url 'https://nabu.be'"
-	+ " --description 'The IDE of the Nabu Platform'"
-	+ " --license-file " + path + "/LICENSE"
-	+ " --runtime-image " + jre
-	+ " --icon " + logo
-	+ " --app-version " + version
-	+ " --vendor 'Alexander Verbruggen'"
-	+ " --type " + type
-	+ " --dest " + nabuApplications
+		echo("Creating " + type + " image for developer")
+		command = jpackage + " --input " + temporary + "/lib"
+			+ " --name 'Nabu Developer'"
+			+ " --java-options '-Xmx8096m -Dprism.maxvram=2048m -Dvm.screenshot=true -Dshow.hidden=false -Dbe.nabu.eai.repository.cacheModules=true -Dsshj=true -Dsun.java2d.xrender=false -Dversion=2 -Ddevelopment=true'"
+			+ " --main-jar " + mainJar
+			+ " --main-class 'be.nabu.eai.developer.Main'"
+			+ " --about-url 'https://nabu.be'"
+			+ " --description 'The IDE of the Nabu Platform'"
+			+ " --license-file " + path + "/LICENSE"
+			+ " --runtime-image " + jre
+			+ " --icon " + logo
+			+ " --app-version " + version
+			+ " --vendor 'Alexander Verbruggen'"
+			+ " --type " + type
+			+ " --dest " + nabuApplications
 
-if (parameters != null)
-	command = command + " " + parameters
+		if (parameters != null)
+			command = command + " " + parameters
+		
+		# Build a runnable package
+		system.eval(command)
 
-# Build a runnable package
-system.eval(command)
+		if (type == "deb")
+			# there is a bug that the desktop file does not include a particular setting which is needed by gnome to link back the running application to the correct desktop file
+			# this results in the application having a correct icon in activities but not in the dock on the left once running, instead you get a cog.
+			# additionally you can't pin the application itself to the dock
+			# this desktop file exists in two locations (on ubuntu 2024): /usr/share/applications and /opt/nabu-developer/lib.
+			# to manually fix this, you need to add the StartupWMClass entry to both files
+			# an alternative solution is to rewrite the deb to include the entry
+			current = last(sort(lambda(a, b, when(a > b, 1, -1)), file.list(nabuApplications, fileRegex: ".*" + singleProject + ".*\.deb")))
+			echo("Rewriting current: " + current)
+			system.mv(nabuApplications + "/" + current, temporary + "/" + current)
+			system.mkdir("deb")
+			# unpackage the deb file
+			system.eval("dpkg-deb -R " + current + " deb")
+			string content = file.read("deb/opt/nabu-developer/lib/nabu-developer-Nabu_Developer.desktop")
+			content = content + "StartupWMClass=be.nabu.eai.developer.Main\n"
+			file.write("deb/opt/nabu-developer/lib/nabu-developer-Nabu_Developer.desktop", content)
 
-# there is a bug that the desktop file does not include a particular setting which is needed by gnome to link back the running application to the correct desktop file
-# this results in the application having a correct icon in activities but not in the dock on the left once running, instead you get a cog.
-# additionally you can't pin the application itself to the dock
-# this desktop file exists in two locations (on ubuntu 2024): /usr/share/applications and /opt/nabu-developer/lib.
-# to manually fix this, you need to add the StartupWMClass entry to both files
-# an alternative solution is to rewrite the deb to include the entry
-if (type == "deb")
-	current = last(sort(lambda(a, b, when(a > b, 1, -1)), file.list(nabuApplications, fileRegex: ".*\.deb")))
-	echo("Rewriting current: " + current)
-	system.mv(nabuApplications + "/" + current, temporary + "/" + current)
-	system.mkdir("deb")
-	# unpackage the deb file
-	system.eval("dpkg-deb -R " + current + " deb")
-	string content = file.read("deb/opt/nabu-developer/lib/nabu-developer-Nabu_Developer.desktop")
-	content = content + "StartupWMClass=be.nabu.eai.developer.Main\n"
-	file.write("deb/opt/nabu-developer/lib/nabu-developer-Nabu_Developer.desktop", content)
-	# repackage updated deb file
-	system.eval("dpkg-deb -b deb " + current)
-	system.mv(current, nabuApplications + "/" + current)
+			# the application is NOT automatically added to path, we modify the postinst script included in the debian package to add this
+			string postinst = file.read("deb/DEBIAN/postinst")
+			postinst = replace("(?s)\bconfigure\\)(.*?);;", "configure)$1\nln -s '/opt/nabu-developer/bin/Nabu Developer' /usr/bin/nabu-developer\n;;", postinst)
+			file.write("deb/DEBIAN/postinst", postinst)
+			# cleanup as well...
+			string postrm = file.read("deb/DEBIAN/postrm")
+			postrm = replace("(?s)([\w]+)\\)(.*?);;", "$1)$2\nrm /usr/bin/nabu-developer\n;;", postrm)
+			file.write("deb/DEBIAN/postrm", postrm)
+			# repackage updated deb file
+			system.eval("dpkg-deb -b deb " + current)
+			system.mv(current, nabuApplications + "/" + current)
+	
+	else if (singleProject == "cli")
+		jre = nabuApplications + "/jre-headless"
+		mainJar = first(file.list(temporary + "/lib", fileRegex: "glue-.*\.jar"))
 
-# Remove the tmp folder
-file.delete(temporary)
+		echo("Creating " + type + " image for glue cli")
+		command = jpackage + " --input " + temporary + "/lib"
+			+ " --name 'glue'"
+			+ " --java-options '-Xmx2096m -Dversion=2 -Ddevelopment=true'"
+			+ " --main-jar " + mainJar
+			+ " --main-class 'be.nabu.glue.Main'"
+			+ " --about-url 'https://nabu.be'"
+			+ " --description 'The scripting language of the Nabu Platform'"
+			+ " --license-file " + path + "/LICENSE"
+			+ " --runtime-image " + jre
+			+ " --icon " + logo
+			+ " --app-version " + version
+			+ " --vendor 'Alexander Verbruggen'"
+			+ " --type " + type
+			+ " --dest " + nabuApplications
+
+		if (parameters != null)
+			command = command + " " + parameters
+
+		# Build a runnable package
+		system.eval(command)
+
+		if (type == "deb")
+			current = last(sort(lambda(a, b, when(a > b, 1, -1)), file.list(nabuApplications, fileRegex: ".*" + when(singleProject == "cli", "glue", singleProject) + ".*\.deb")))
+			echo("Rewriting current: " + current)
+			system.mv(nabuApplications + "/" + current, temporary + "/" + current)
+			system.mkdir("deb")
+			# unpackage the deb file
+			system.eval("dpkg-deb -R " + current + " deb")
+			# the application is NOT automatically added to path, we modify the postinst script included in the debian package to add this
+			string postinst = file.read("deb/DEBIAN/postinst")
+			postinst = replace("(?s)\bconfigure\\)(.*?);;", "configure)$1\nln -s '/opt/glue/bin/glue' /usr/bin/glue\n;;", postinst)
+			file.write("deb/DEBIAN/postinst", postinst)
+			# cleanup as well...
+			string postrm = file.read("deb/DEBIAN/postrm")
+			postrm = replace("(?s)([\w]+)\\)(.*?);;", "$1)$2\nrm /usr/bin/glue\n;;", postrm)
+			file.write("deb/DEBIAN/postrm", postrm)
+			# repackage updated deb file
+			system.eval("dpkg-deb -b deb " + current)
+			system.mv(current, nabuApplications + "/" + current)
+
+	# Remove the tmp folder
+	file.delete(temporary)
