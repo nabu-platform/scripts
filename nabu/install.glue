@@ -34,7 +34,7 @@ for (application : applications)
 				if (application == "developer")
 					runnableFile = nabuApplications + "/nabu-developer.sh"
 					if (!file.exists(runnableFile))
-						content = java + " -Xmx8096m --module-path " + javafx + "/lib --add-modules=ALL-MODULE-PATH,java.sql -Dvm.screenshot=true -Dshow.hidden=false -Dnio.debug.pipeline=false -Dbe.nabu.eai.repository.cacheModules=true -Dhttp.client.debug=false -Dsshj=true -Dsun.java2d.xrender=false -Dversion=2 -Ddevelopment=true -cp '" + applicationPath + "/lib/*:.' be.nabu.eai.developer.Main " + '"$@"'
+						content = java + " -Xmx8096m --module-path " + javafx + "/lib --add-modules=ALL-MODULE-PATH,java.sql,jdk.management --add-opens jdk.management/com.sun.management.internal=ALL-UNNAMED -Dvm.screenshot=true -Dshow.hidden=false -Dnio.debug.pipeline=false -Dbe.nabu.eai.repository.cacheModules=true -Dhttp.client.debug=false -Dsshj=true -Dsun.java2d.xrender=false -Dversion=2 -Ddevelopment=true -cp '" + applicationPath + "/lib/*:.' be.nabu.eai.developer.Main " + '"$@"'
 						file.write(runnableFile, content)
 						# make sure we can run it
 						system.chmod("u+x", runnableFile)

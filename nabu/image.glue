@@ -36,7 +36,7 @@ if (file.exists(jre) && forceJre)
 if (!file.exists(jre) || forceJre)
 	# you can use the following command to get an overview of the default modules:
 	# java --list-modules
-	command = jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql,java.xml,java.management --output " + jre
+	command = jlink + " --module-path '" + jmods + ":mods' --add-modules ALL-MODULE-PATH,java.base,java.naming,java.logging,java.sql,java.xml,java.management,jdk.management,jdk.management.agent,jdk.jconsole,java.instrument --output " + jre
 	system.eval(command)
 
 # make sure we have an up to date package
