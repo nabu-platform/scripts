@@ -3,6 +3,7 @@
 type ?= null
 force ?= false
 inject(nabu.settings())
+debug ?= false
 
 if (type == "repository" || type == null)
 	# make sure we have the latest pom installed for module management
@@ -54,6 +55,7 @@ if (type == "repository" || type == null)
 		echo("Unsorted", unsorted)
 		abort()
 
+	skipped = 0
 	counter = 1
 	for (module : sorted)
 		path = module/path
@@ -87,10 +89,14 @@ if (type == "repository" || type == null)
 			else
 				echo("[" + counter + "] Build failed for " + module/name + ", could not find file: " + expectedBuildPath)
 		else
-			echo("[" + counter + "] Skipping package for " + module/name)
+			skipped = skipped + 1
+			if (debug)
+				echo("[" + counter + "] Skipping package for " + module/name)
 		counter = counter + 1
-
+	if (skipped > 0 && !debug)
+		echo("Skipped " + skipped + " repository packages that have no changes")
 if (type == "java" || type == null)
+	skipped = 0
 	system.cd(nabuWorkspace)
 	# it is not easy to determine whether something has changed, we would need to figure out all the libraries involved and check them
 	# it is easier in this case just to build it and check if it's changed
@@ -141,5 +147,9 @@ if (type == "java" || type == null)
 					system.ln("-s", newFile, latest)
 					echo("New build for " + name + " based on " + size(changed) + " changed dependencies")
 					echo("\t" + join(", ", changes))
-			else
-				echo("Skipping package for " + name)
+			else 
+				skipped = skipped + 1
+				if (debug)
+					echo("Skipping package for " + name)
+	if (skipped > 0 && !debug)
+		echo("Skipped " + skipped + " java packages that have no changes")
