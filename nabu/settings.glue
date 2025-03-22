@@ -1,11 +1,15 @@
+# create a file ".glue" in your home folder
+# add to it something like test.workspace=something
+# then run: glue nabu.settings environment=test
+workspace ?= environment("workspace", "nabu")
 homeFolder = java.lang.System.getProperty("user.home")
-nabuWorkspace ?= homeFolder + "/nabu/workspaces/main"
-webWorkspace ?= homeFolder + "/nabu/workspaces/web"
-nabuRepository = homeFolder + "/nabu/repositories/main"
-nabuApplications = homeFolder + "/nabu/applications"
-nabuBuilds ?= homeFolder + "/nabu/builds"
+nabuWorkspace ?= homeFolder + "/" + workspace + "/workspaces/main"
+webWorkspace ?= homeFolder + "/" + workspace + "/workspaces/web"
+nabuRepository = homeFolder + "/" + workspace + "/repositories/main"
+nabuApplications = homeFolder + "/" + workspace + "/applications"
+nabuBuilds ?= homeFolder + "/" + workspace + "/builds"
 
-settingsFile = homeFolder + "/.nabu-configuration.json"
+settingsFile = homeFolder + "/." + workspace + "-configuration.json"
 
 if (file.exists(settingsFile))
 	settings = json.objectify(file.read(settingsFile))
@@ -41,11 +45,11 @@ configure = method
 		file.write(settingsFile, json.stringify(settings, pretty: true))
 
 if (newSettings)
-	echo("No configuration was found, let's set up your Nabu environment before we continue")
+	echo("No configuration was found, let's set up your " + workspace + " environment before we continue")
 
-nabuFolder = configure(prompt: "Folder where nabu related files should be stored", key: "home", defaultValue: java.lang.System.getProperty("user.home") + "/nabu")
+nabuFolder = configure(prompt: "Folder where " + workspace + " related files should be stored", key: "home", defaultValue: java.lang.System.getProperty("user.home") + "/" + workspace)
 configure(prompt: "Folder where the java and web workspaces will be stored", key: "workspaces", defaultValue: nabuFolder + "/workspaces")
-configure(prompt: "Folder where the nabu repositories will be added", key: "repositories", defaultValue: nabuFolder + "/repositories")
+configure(prompt: "Folder where the " + workspace + " repositories will be added", key: "repositories", defaultValue: nabuFolder + "/repositories")
 configure(prompt: "Folder where the the built files will be stored", key: "builds", defaultValue: nabuFolder + "/builds")
 configure(prompt: "Folder where the the applications will be installed", key: "applications", defaultValue: nabuFolder + "/applications")
 
@@ -58,3 +62,5 @@ webWorkspace = settings/workspaces + "/web"
 nabuRepository = settings/repositories + "/main"
 nabuApplications = settings/applications
 nabuBuilds = settings/builds
+corePom = homeFolder + "/.m2/repository/be/" + workspace + "/core/1.0-SNAPSHOT/core-1.0-SNAPSHOT.pom"
+packagePom = homeFolder + "/.m2/repository/be/" + workspace + "/modules/1.0-SNAPSHOT/modules-1.0-SNAPSHOT.pom"

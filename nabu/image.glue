@@ -85,7 +85,7 @@ for (singleProject : project)
 		echo("Creating " + type + " image for developer")
 		command = jpackage + " --input " + temporary + "/lib"
 			+ " --name 'Nabu Developer'"
-			+ " --java-options '-Xmx8096m -Dprism.maxvram=2048m -Dvm.screenshot=true -Dshow.hidden=false -Dbe.nabu.eai.repository.cacheModules=true -Dsshj=true -Dsun.java2d.xrender=false -Dversion=2 -Ddevelopment=true'"
+			+ " --java-options '-Xmx10096m -Dprism.maxvram=2048m -Dvm.screenshot=true -Dshow.hidden=false -Dbe.nabu.eai.repository.cacheModules=true -Dsshj=true -Dsun.java2d.xrender=false -Dversion=2 -Ddevelopment=true'"
 			+ " --main-jar " + mainJar
 			+ " --main-class 'be.nabu.eai.developer.Main'"
 			+ " --about-url 'https://nabu.be'"

@@ -7,9 +7,8 @@ debug ?= false
 
 if (type == "repository" || type == null)
 	# make sure we have the latest pom installed for module management
-	pathToInstalledPom = homeFolder + "/.m2/repository/be/nabu/modules/1.0-SNAPSHOT/modules-1.0-SNAPSHOT.pom"
 	poms = nabuWorkspace + "/poms"
-	if (!file.exists(pathToInstalledPom) || file.modified(pathToInstalledPom) < file.modified(poms + "/modules.xml"))
+	if (!file.exists(packagePom) || file.modified(packagePom) < file.modified(poms + "/modules.xml"))
 		echo("Installing changed modules pom")
 		if (!file.exists(poms))
 			throw("Could not find pom files")
