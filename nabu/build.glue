@@ -4,7 +4,7 @@ type ?= null
 force ?= false
 inject(nabu.settings())
 # whether to install it immediately in the repository/applications
-install ?= true
+boolean install ?= configure(prompt: "Should built files be installed automatically? [true/false]", key: "installAutomatically", defaultValue: "false")
 
 poms = nabuWorkspace + "/poms"
 if (!file.exists(corePom) || file.modified(corePom) < file.modified(poms + "/core.xml"))
@@ -83,7 +83,7 @@ for (project : sorted)
 		else
 			echo("\tBuild successful (" + (date() - start) + "ms)")
 			built = first(file.list("target", ".*\.jar$"))
-			if (built != null)
+			if (built != null && install)
 				for (file : file.list(nabuApplications, fileRegex: "\Q" + built + "\E", recursive: true))
 					echo("\tUpdating application file: " + file)
 					file.write(nabuApplications + "/" + file, file.read("target/" + built))
