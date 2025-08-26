@@ -51,8 +51,12 @@ if (type == "repository" || type == null)
 	unsorted = filter(lambda(x, x !? sorted), modules)
 	echo("Sorted " + size(sorted) + "/" + size(modules) + " modules (" + (date() - start) + "ms)")
 	if (size(unsorted) > 0)
-		echo("Unsorted", unsorted)
-		abort()
+		if (force)
+			# if we are forcing a package, we assume it is present
+			sorted = resolve(merge(sorted, unsorted))
+		else
+			echo("Unsorted", unsorted)
+			abort()
 
 	skipped = 0
 	counter = 1

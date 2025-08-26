@@ -1,0 +1,136 @@
+## This script tries to deduce all the module dependencies based on a combination of factors:
+## - it will check which jars reside in a module, cross reference those with projects that exist in the nabu workspace and use mvn dependency:tree to get direct (non-recursive) dependencies to other java projects
+##		it will then check which modules those jars reside in and flag those as a dependency
+## - it will check all node.xml files and more specifically the "artifact manager" and cross reference that with all the java classes in the nabu workspace to find the jar they belong to
+##		it will then again check which module the jar resides in and flag those as a dependency
+## - it will check all references that exist in all node.xml to figure out more hidden dependencies that reside within artifacts, for example a foreign key descriptor in a structure
+## This script can be run multiple times, it will simply check that all defined dependencies match the ones it can figure out, it will then prompt you (separately) to remove ones it thinks shouldn't be there and add the ones that it thinks should
+## The goal is to periodically run this to make sure the inter-module dependencies stay up to date, it does require a full nabu workspace and the modules in question should be extracted (not as a nar)
+
+# whether to express the dependency to a java project or to the module containing the java project
+asJavaProject ?= false
+
+# the script was later retrofitted to match the standard definitions
+inject(nabu.settings())
+workspace = nabuWorkspace
+repository = nabuRepository
+
+# find all java classes
+java = file.list(workspace, fileRegex: ".*\.java", recursive: true)
+#java = replace("^.*/([^/]+)\.java$", "$1", java)
+# translate the file path into a class path (though still with .java attached)
+java = replace("/", ".", java)
+
+# find all the node.xml files
+nodes = file.list(repository, fileRegex: "node.xml", recursive: true)
+
+# find all the pom.xml files which indicate the presence of a module
+modules = replace("^(.*)/pom.xml$", "$1", file.list(repository, fileRegex: "pom.xml", recursive:true))
+
+# check which module each jar is in so we can map the project
+jars = file.list(repository, fileRegex: ".*\.jar$", recursive: true)
+javaProjects = file.list(workspace, directoryRegex: ".*", recursive: false)
+# this has a map where the key is the name of the java project and the value is the name of the module it is in
+moduleMap = structure()
+for (javaProject : javaProjects)
+	# force a version number after the name, otherwise "eai-module-glue" will match with "eai-module-glue-testing"
+	hit = first(jars[$this ~ "^.*/" + /javaProject + "-[0-9]+.*\.jar$"])
+	if (hit != null)
+		module = first(modules[/hit ~ "^" + $this + "/.*"])
+		if (module != null)
+			moduleMap[/javaProject] = module
+			
+projects = structure()
+
+# now that we know which modules a jar belongs to, let's do an initial layout based on java dependencies
+for (javaProject : javaProjects)
+	if (moduleMap[/javaProject] != null)
+		echo("[" + ($index + 1) + "/" + size(javaProjects) + "] " + javaProject + " maven dependencies")
+		initial = series()
+		# if we have a pom file, let's do a mvn dependency
+		if (file.exists(workspace + "/" + javaProject + "/pom.xml"))
+			# we are only interested in _direct_ dependencies
+			system.cd(workspace + "/" + javaProject)
+			mvn = split("\n", system.mvn("dependency:tree"))
+			# example:
+			# [INFO] +- be.nabu.eai:eai-developer:jar:1.19-SNAPSHOT:provided
+			directJavaDependencies = find(".*?INFO[^:|]+:([^:]+):.*", mvn)
+			for (directDependency : directJavaDependencies)
+				module = moduleMap[/directDependency]
+				# not a dependency to oneself
+				if (module != null && module != moduleMap[/javaProject])
+					module = replace("/", ".", module)
+					if (module !? initial)
+						echo("Found direct dependency: " + moduleMap[/javaProject] + " to " + module)
+						initial = merge(initial, replace("/", ".", module))
+		if (size(initial) > 0)
+			projects[/moduleMap[/javaProject]] = initial
+
+# now let's scan the node files for artifact manager dependencies and references
+for (node : nodes)
+	echo("[" + ($index + 1) + "/" + size(nodes) + "] " + node)
+	# check which module we belong to
+	name = first(modules[/node ~ $this + ".*"])
+	# might not be a module
+	if (name != null)
+		xml = xml.objectify(file.read(repository + "/" + node))
+		hit = first(java[$this ~ "^.*" + /xml/@artifactManager + ".java"])
+		if (hit != null)
+			project = projects[/name]
+			if (project == null)
+				project = series()
+			javaProject = replace("^([^.]+).*", "$1", hit)
+			# eai-module-maven ships automatically because it is so foundational
+			if (javaProject !? project && javaProject != "eai-module-maven")
+				if (asJavaProject)
+					projects[/name] = resolve(merge(project, javaProject))
+				else
+					theModule = moduleMap[/javaProject]
+					# can't have a dependency to oneself...
+					if (theModule != null && theModule != name)
+						theModule = replace("/", ".", theModule)
+						if (theModule !? project)
+							projects[/name] = resolve(merge(project, theModule))
+						
+		else
+			echo("Could not resolve " + xml/@artifactManager)
+
+
+echo(json.stringify(projects, pretty: true))
+
+for (module : modules)
+	pomFile = repository + "/" + module + "/pom.xml"
+	if (!file.exists(pomFile))
+		throw("Pom not found: " + pomFile)
+	pom = xml.objectify(file.read(pomFile))
+	dependencies = when(pom/dependencies != null && pom/dependencies/dependency != null, merge(pom/dependencies/dependency), series())
+	asIs = resolve(derive(lambda(x, x/groupId + "." + x/artifactId), dependencies))
+	toBe = projects[/module]
+	toRemove = asIs[$this !? /toBe]
+	toAdd = toBe[$this !? /asIs]
+	if (size(toRemove) == 0 && size(toAdd) == 0)
+		echo("Module " + module + " is up to date")
+	else
+		echo("Module " + module + " has incorrect dependencies")
+		if (size(toRemove) > 0)
+			answer = input("\tShould I remove: " + join(", ", toRemove) + "? [y/N] ")
+			if (answer != "y")
+				toRemove = series()
+		if (size(toAdd) > 0)
+			answer = input("\tShould I add: " + join(", ", toAdd) + "? [Y/n] ")
+			if (answer == "n")
+				toAdd = series()
+		if (size(toRemove) > 0 || size(toAdd) > 0)
+			if (size(toRemove) > 0)
+				dependencies = dependencies[groupId + "." + artifactId !? /toRemove]
+			if (size(toAdd) > 0)
+				for (single : toAdd)
+					dependencies = merge(dependencies, structure(groupId: replace("^(.*)\.[^.]+$", "$1", single), artifactId: replace("^.*\.([^.]+)$", "$1", single)))
+			if (pom/dependencies == null)
+				pom/dependencies = structure()
+			pom/dependencies = structure(dependency: resolve(dependencies))
+			#pom/dependencies/dependency = resolve(dependencies)
+			file.write(pomFile, xml.stringify(pom))
+			
+	
+

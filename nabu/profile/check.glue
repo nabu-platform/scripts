@@ -1,0 +1,185 @@
+## This script recursively lists all the provided poms and checks the latest versions
+## It can return this as a simple conclusion or it can actually update all the dependencies
+
+directory ?= system.pwd()
+update ?= false
+silent ?= !update
+
+inject(nabu.settings())
+
+defaultRepository = configure(prompt: "Which default module repository do you want to use?", key: "module.endpoint", defaultValue: "https://module.nabu.be")
+
+resolveRepository = lambda(x, when(x == null, defaultRepository, x))
+
+formatVersion = lambda(object, "" 
+		+ when(object/major != null, object/major, "*")
+		+ "." + when(object/minor != null, object/minor, "*")
+		+ "." + when(object/patch != null, object/patch, "*"))
+
+unzipLibrary = lambda
+	content ?= null
+	path ?= null
+	unzipped = unzip(content)
+	for (file : keys(unzipped))
+		if (file !~ "^META-INF/.*")
+			file.write(path + "/" + file, unzipped[/file])
+		# we want to keep the META-INF stuff because it contains a pom file which defines the dependencies
+		# however it shouldn't be part of the repo so put it in the private folder
+		else
+			file.write(path + "/private/" + file, unzipped[/file])
+
+dependencies = series()
+for (pom : file.list(directory, fileRegex: "pom\.xml", recursive: true))
+	if (!silent)
+		echo("Processing " + pom)
+	project = xml.objectify(file.read(pom))
+	# the "merge" forces it to be a list even if it isn't. we parse without a schema so for a singular dependency the system would not know that it needs to be a list
+	for (dependency : merge(project/dependencies/dependency))
+		if (dependency/groupId == null || dependency/artifactId == null)
+			echo("Invalid dependency", dependency)
+			abort()
+		name = dependency/groupId + "." + dependency/artifactId
+		existing = first(dependencies[name == /name])
+		if (existing == null)
+			existing = structure(
+				name: name, 
+				repository: resolveRepository(dependency/repository))
+			dependencies = merge(dependencies, existing)
+		# if we have version restrictions, we need to check them
+		if (dependency/version != null)
+			# for maven-compatible versions, skip any added bits like -SNAPSHOT
+			parts = split("\.", replace("-.*", "", dependency/version))
+			integer major = parts[0]
+			integer minor = parts[1]
+			integer patch = parts[2]
+			# if multiple modules have a particular version requirement, a non matching should be flagged, we take the "most recent" hoping for backwards compatibility but with most features/security fixes
+			if (major != null)
+				if (existing/major != null && existing/major != major && !silent)
+					echo("Conflicting major version requirement for '" + name + "': " + existing/major + " != " + major)
+				if (existing/major == null || major > existing/major)
+					existing/major = major
+			# it must be the same major version, we don't want to take a "higher" minor version if we are not in the correct major version
+			if (minor != null && existing/major == major)
+				if (existing/minor != null && existing/minor != minor && !silent)
+					echo("Conflicting minor version requirement for '" + name + "': " + existing/minor + " != " + minor)
+				if (existing/minor == null || minor > existing/minor)
+					existing/minor = minor
+			if (patch != null && minor == existing/minor && major == existing/major)
+				if (existing/patch != null && existing/patch != patch && !silent)
+					echo("Conflicting patch version requirement for '" + name + "': " + existing/patch + " != " + patch)
+				if (existing/patch == null || patch > existing/patch)
+					existing/patch = patch
+		# we initialize the existing with the same repository specifically so we can do this check successfully
+		# the idea is that of course multiple different repository definitions clash but also if you have one WITHOUT a repository and one WITH, it should clash
+		if (resolveRepository(dependency/repository) != existing/repository)
+			echo("Conflicting repositories found for '" + name + "': " + resolveRepository(dependency/repository) + " != " + existing/repository)
+			abort()
+		# if we want to extract the module, do so
+		if (dependency/extract == true)
+			existing/extract = true
+
+repositories = unique(dependencies/repository)
+
+if (!silent)
+	echo("Found " + size(dependencies) + " dependencies over " + size(repositories) + " repositories, checking for latest versions")
+
+repositoryRoot = first(file.list(directory, fileRegex: ".nabu-repository", recursive: true))
+if (repositoryRoot != null)
+	repositoryRoot = replace("^(.*)[/]+[^/]+$", "$1", directory + "/" + repositoryRoot)
+
+# snapshot of the current versions
+snapshot = series()
+
+for (repository : repositories)
+	modules = dependencies[repository == /repository]
+	url = repository + "/api/v1/module/check"
+	response = http(
+		"POST",
+		url, 
+		json.stringify(structure(
+			modules: modules
+		), forceRoot: true), 
+		structure(
+			contentType: "application/json",
+			accept: "application/json"))
+	content = json.objectify(response/content)
+
+	for (module : modules)
+		latest = first(content/modules[name == /module/name])
+		if (latest == null)
+			echo("Could not resolve module " + name + "@" + formatVersion(module) + " from: " + repository)
+			abort()
+		snapshot = resolve(merge(snapshot, latest))
+
+		if (update)
+			# nar files need to be installed in the root of the repository
+			if (latest/moduleType == "nar")
+				# make sure we prompt at least once for the repository root, just in case you ran the script elsewhere
+				if (repositoryRoot == null)
+					repositoryRoot = input("What is the root of the repository? [" + directory + "] ")
+					if (repositoryRoot == null || size(trim(repositoryRoot)) == 0)
+						repositoryRoot = directory
+					# mark the folder so we don't have to prompt again
+					file.write(repositoryRoot + "/.nabu-repository", "created=" + date())
+				# we want to tell the user at least once which repository we are using
+				else if (!repositoryOutputted)
+					echo("Using repository root " + repositoryRoot)
+					repositoryOutputted = true
+				if (module/extract)
+					path = repositoryRoot + "/" + replace("\.", "/", module/name)
+
+					# you just toggled it, we still have the nar file
+					if (file.exists(path + ".nar"))
+						if (!file.exists(path))
+							echo("Switching " + module/name + " from zipped to extracted")
+							unzipLibrary(file.read(path + ".nar"), path)
+							file.write(path + ".sha512", sha512(file.read(path + ".nar")))
+						file.delete(path + ".nar")
+
+					string hash = when(file.exists(path + ".sha512"), file.read(path + ".sha512"))
+				else
+					path = repositoryRoot + "/" + replace("\.", "/", module/name)
+					# you just toggled of extraction but we still have an extracted version
+					# it is unlikely to have the same hash if we rezip it (at the very least cause we threw away META-INF stuff), so instead we just throw it away and redownload it
+					if (file.exists(path))
+						echo("Switching " + module/name + " from extracted to zipped")
+						file.delete(path)
+					if (file.exists(path + ".sha512"))
+						file.delete(path + ".sha512")
+					path = path + ".nar"
+					hash = when(file.exists(path), sha512(file.read(path)))
+
+			else
+				echo("Module type not supported for '" + module/name + "': " + latest/moduleType)
+				abort()
+			
+			# should we update?
+			updateModule = false
+			if (!file.exists(path))
+				echo("Installing new module " + module/name + "@" + formatVersion(module) + " in " + path + "]")
+				updateModule = true
+			else if (hash != latest/hash)
+				echo("Updating " + module/name + "@" + formatVersion(module) + " to " + formatVersion(latest))
+				updateModule = true
+			else
+				echo("Module " + module/name + "@" + formatVersion(module) + " is up to date")
+			
+			if (updateModule)
+				url = repository + "/api/v1/module/" + module/name + "/" + latest/major + "." + latest/minor + "." + latest/patch + "/content"
+				response = http(
+					"GET",
+					url)
+				if (response/code >= 200 && response/code < 300)
+					if (module/extract)
+						# delete so we don't retain older files
+						file.delete(path)
+						unzipLibrary(response/content, path)
+						file.write(path + ".sha512", latest/hash)
+					else
+						file.write(path, response/content)
+				else
+					echo("Could not download " + module/name + "@" + formatVersion(latest) + " failed for: " + url, response)
+					abort()
+
+if (!update)
+	echo(json.stringify(structure(modules: snapshot), pretty: true))

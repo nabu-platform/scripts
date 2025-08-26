@@ -1,0 +1,172 @@
+## This script deploys a file to a module-compatible endpoint
+## It is tailored to recognize and use the naming convention used by the other scripts but you can manually override settings as needed
+
+file ?= null
+# should we include release notes?
+notes ?= false
+
+if (file == null)
+	echo("You must provide a file")
+	abort()
+
+fileName = replace("^.*?/([^/]+)$", "$1", file)
+extension = replace("^.*?\.([^.]+)$", "$1", fileName)
+version ?= replace("^.*?[\.-]{1}([0-9]+\.[0-9]+\.[0-9]+).*$", "$1", replace("-SNAPSHOT", "", fileName))
+moduleType ?= extension
+moduleName ?= replace("^(.*?)[\.-]{1}[0-9]+.*", "$1", fileName)
+integer major ?= replace("^([0-9]+).*", "$1", version)
+integer minor ?= replace("^[0-9]+\.([0-9]+).*", "$1", version)
+integer patch = replace("^[0-9]+\.[0-9]+\.([0-9]+).*", "$1", version)
+
+inject(nabu.settings())
+
+# intercept these entries and remap them to use a namespace and not use the "zip" extension
+if (moduleName == "integrator")
+	moduleType = "app"
+	moduleName = "nabu.integrator"
+else if (moduleName == "developer")
+	moduleType = "app"
+	moduleName = "nabu.developer"
+else if (moduleName == "cli")
+	moduleType = "app"
+	moduleName = "nabu.cli"
+
+namespace = replace("^([\w.]+)\.[^.]+$", "$1", moduleName)
+defaultModuleServer = configure(prompt: "Which default module repository do you want to use?", key: "module.endpoint", defaultValue: "https://module.nabu.be")
+targetServer = configure(prompt: "Which server should this module be pushed to?", key: "module." + moduleName + ".endpoint", defaultValue: defaultModuleServer)
+# we can't include special signs in the key name
+# normalizedServer = replace("^http(?:s|)://([^/:]+).*", "$1", targetServer)
+# the hash makes it harder to read but at least consistently (and uniquely) without special characters
+normalizedServer = md5(targetServer)
+
+echo("Deploying " + moduleName + " version " + major + "." + minor + "." + patch + " (" + moduleType + ") to " + targetServer)
+
+apiKey = configure(prompt: "Please provide an API key for this server:", key: "module." + normalizedServer + ".apiKey")
+
+if (apiKey == null)
+	echo("No api key provided, can not continue")
+	abort()
+
+if (notes)
+	echo("Release notes: ")
+	releaseNotes = ""
+	for (100)
+		line = input("> ")
+		if (size(trim(line)) == 0)
+			break
+		if ($index > 0)
+			releaseNotes = releaseNotes + "\n"
+		releaseNotes = releaseNotes + line
+
+dependencies = series()
+# if you are releasing a zip file, do a best effort check for dependencies
+if (moduleType == "nar")
+	contents = unzip(file)
+	# either at the root or in the META-INF folder
+	pomKey = first(keys(contents)[$this ~ "(^|.*/)pom.xml$"])
+	if (pomKey != null)
+		pom = xml.objectify(contents[/pomKey])
+		# force into a list
+		for (dependency : merge(pom/dependencies/dependency))
+			dependencyVersion = split("\.", replace("-.*", "", dependency/version))
+			integer dependencyMajor = dependencyVersion[0]
+			integer dependencyMinor = dependencyVersion[1]
+			integer dependencyPatch = dependencyVersion[2]
+			dependencyName = when(dependency/name, dependency/name, dependency/groupId + "." + dependency/artifactId)
+			dependencies = merge(dependencies, structure(
+					name: dependencyName,
+					repository: when(dependency/repository != null, dependency/repository, configure(prompt: "What server is " + dependencyName + " hosted on?", key: "module." + dependencyName + ".endpoint", defaultValue: defaultModuleServer)),
+					major: dependencyMajor,
+					minor: dependencyMinor,
+					patch: dependencyPatch
+				))
+			
+# use a method to see the updated scope for api key if necessary
+release = method
+	url = targetServer + "/api/v1/module/" + moduleName + "/" + major + "." + minor + "." + patch
+	if (releaseNotes != null && size(trim(releaseNotes)) > 0)
+		url = url + "?notes=" + releaseNotes
+	integer start = date()
+	# json of a 20mb file takes 25s (has to do with lookahead of the parser to find end of string...)
+	# xml takes 5s
+	# multipart was able to do it in 4.2s but is currently not easily supported in glue, so using xml for now
+	@return
+	response = http(
+		"POST", 
+		url, 
+		xml.stringify(structure(
+			releaseNotes: releaseNotes,
+			content: file.read(file),
+			dependencies: dependencies
+		)),
+		structure(
+			authorization: "Bearer " + apiKey,
+			contentType: "application/xml",
+			accept: "application/json"))
+	integer stop = date()
+	echo("Took: " + (stop - start) + "ms")
+
+create = method
+	url = targetServer + "/api/v1/module"
+	echo("You need to provide some additional data for this module to be created")
+	title = input("A short title (required): ")
+	if (size(trim(title)) == 0)
+		echo("Title is required")
+		abort()
+	description = input("A longer description (optional): ")
+	author = input("Author: ")
+	license = input("License: ")
+	homePage = input("Home page: ")
+	actualModuleType = input("Module type [" + moduleType + "]: ")
+	if (actualModuleType == null || size(trim(actualModuleType)) == 0)
+		actualModuleType = moduleType
+	@return
+	response = http(
+		"POST", 
+		url, 
+		json.stringify(structure(
+			name: moduleName,
+			moduleType: actualModuleType,
+			title: title,
+			author: author,
+			license: license,
+			homePage: homePage,
+			description: description
+		)), 
+		structure(
+			authorization: "Bearer " + apiKey,
+			contentType: "application/json",
+			accept: "application/json"))
+
+newApiKey = method
+	@persist
+	apiKey = configure(prompt: "Your API key no longer seems valid, please provide a new one:", key: "module." + normalizedServer + ".apiKey", force:true)
+
+response = release()
+# module does not exist yet, create it
+if (response/code == 404)
+	answer = input("The module does not exist yet in this server, do you want to create it? [Y/n] ")
+	if (answer == "n")
+		abort()
+	response = create()
+	if (response/code == 401 || response/code == 403)
+		newApiKey()
+		response = create()
+	if (response/code >= 200 && response/code < 300)
+		response = release()
+else if (response/code == 401 || response/code == 403)
+	newApiKey()
+	response = release()
+
+if (response/code >= 200 && response/code < 300)
+	echo("Released successfully")
+else if (response/code == 500)
+	content = json.objectify(response/content)
+	if (content/type == "VERSION-EXISTS")
+		echo("This version is already released")
+	else if (content/detail != null)
+		echo(content/detail)
+	else
+		echo("Release failed", response)
+else
+	echo("Release failed", response)

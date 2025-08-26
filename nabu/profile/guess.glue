@@ -1,0 +1,63 @@
+## This script takes an existing repository and guesses the dependencies necessary to recreate it
+
+directory ?= system.pwd()
+
+repositoryRoot = first(file.list(directory, fileRegex: ".nabu-repository", recursive: true))
+if (repositoryRoot != null)
+	repositoryRoot = replace("^(.*)[/]+[^/]+$", "$1", directory + "/" + repositoryRoot)
+else
+	repositoryRoot = input("What is the root of the repository? [" + directory + "] ")
+	if (repositoryRoot == null || size(trim(repositoryRoot)) == 0)
+		repositoryRoot = directory
+
+# we want to take all root projects that contain something OTHER than nar files
+# instead of scanning all files, we simply assume if there is a single nar file in a root folder, it will only contain nar files (e.g. nabu folder)
+
+nars = file.list(repositoryRoot, fileRegex: ".*\.nar", recursive: true)
+
+dependencies = series()
+
+pom = structure($root: "project")
+for (nar : nars)
+	unzipped = unzip(repositoryRoot + "/" + nar)
+	for (key : keys(unzipped))
+		if (key ~ "^META-INF/maven/.*/pom.xml" || key == "pom.xml")
+			description = xml.objectify(unzipped[/key])
+			name = description/groupId + "." + description/artifactId
+			# we only care about the major version when guessing
+			version = replace("^([0-9]+).*", "$1", description/version)
+			dependencies = merge(dependencies, structure(
+				groupId: description/groupId,
+				artifactId: description/artifactId,
+				version: version))
+
+echo("Found " + size(dependencies) + " dependencies")
+
+for (project : file.list(repositoryRoot, directoryRegex: ".*", recursive: false))
+	containedNars = nars[$this ~ "^" + /project + "/.*"]
+	if (size(containedNars) > 0)
+		echo("Assuming " + project + " to be externally managed and not in need of a pom")
+	else
+		profilePath = repositoryRoot + "/" + project + "/pom.xml"
+		# already exists, continue based on that
+		if (file.exists(profilePath))
+			profile = xml.objectify(file.read(profilePath))
+		else
+			profile = structure($root: "project")
+		# force into a list if needed
+		existing = when(profile/dependencies/dependency == null, series(), merge(profile/dependencies/dependency))
+
+		updated = false
+		for (dependency : dependencies)
+			current = existing[groupId == /dependency/groupId && artifactId == /dependency/artifactId]
+			if (current == null)
+				existing = merge(existing, dependency)
+				updated = true
+
+		if (updated)
+			echo("Updating profile for " + project)
+			profile/dependencies/dependency = resolve(existing)
+			file.write(profilePath, xml.stringify(profile))
+		else
+			echo("Profile for " + project + " is up to date")
+
